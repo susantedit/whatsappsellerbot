@@ -276,6 +276,8 @@ async function startBot() {
         if (msg.key.fromMe) return;
 
         const sender  = msg.key.remoteJid;
+        // ── Ignore group messages — only respond to private chats ──
+        if (sender.endsWith('@g.us')) return;
         const waNum   = sender.split('@')[0];
         const rawText = sanitizeInput(msg.message.conversation || msg.message.extendedTextMessage?.text || '');
         const t       = rawText.toLowerCase();
@@ -711,8 +713,7 @@ async function startBot() {
                 `\n\nRemark: ${od.name} - ${rawText}\n\nAfter paying send the screenshot here 📸`;
 
             // send QR
-            if (qrUrl) {
-                await sock.sendPresenceUpdate('composing', sender);
+            if (qrUrl) {                await sock.sendPresenceUpdate('composing', sender);
                 await delay(800);
                 await sock.sendMessage(sender, { image: { url: qrUrl }, caption: paymentMsg });
             } else if (fs.existsSync('./payment.jpeg')) {
@@ -721,17 +722,6 @@ async function startBot() {
                 await sock.sendMessage(sender, { image: fs.readFileSync('./payment.jpeg'), caption: paymentMsg });
             } else {
                 await send(paymentMsg);
-            }
-
-            // send price list image with disclaimer
-            await delay(800);
-            if (fs.existsSync('./pricelist.jpg')) {
-                await sock.sendPresenceUpdate('composing', sender);
-                await delay(600);
-                await sock.sendMessage(sender, {
-                    image: fs.readFileSync('./pricelist.jpg'),
-                    caption: `⚠️ *Important:* Sometimes the bot may show incorrect prices.\nPlease pay according to this price list only 🙏\n\nIf the amount shown above doesn't match this list, pay the amount from this list.`
-                });
             }
 
             await delay(600);

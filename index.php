@@ -16,7 +16,15 @@ if (file_exists($envFile)) {
 }
 function env($k, $d = '') { return $_ENV[$k] ?? getenv($k) ?: $d; }
 
-$firebaseConfig = ["apiKey"=>"","authDomain"=>"","databaseURL"=>"","projectId"=>"","storageBucket"=>"","messagingSenderId"=>"","appId"=>""];
+$firebaseConfig = [
+  "apiKey"            => "",
+  "authDomain"        => "",
+  "databaseURL"       => "",
+  "projectId"         => "",
+  "storageBucket"     => "",
+  "messagingSenderId" => "",
+  "appId"             => "",
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -736,3 +744,4 @@ function confirmBotPayment() {
 </script>
 </body>
 </html>
+
