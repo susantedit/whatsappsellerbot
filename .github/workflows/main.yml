@@ -1,4 +1,4 @@
-name: JavaGoat-WhatsApp-Bot
+name: WhatsApp-Seller-Bot
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Start AI Bot
+      - name: Start Bot
         env:
           FIREBASE_URL: ${{ secrets.FIREBASE_URL }}
         run: npm start

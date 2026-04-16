@@ -1,7 +1,7 @@
 {
-  "name": "javagoat-whatsapp-bot",
+  "name": "whatsapp-seller-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Bot linked to JavaGoat App",
+  "description": "WhatsApp Bot for game top-ups and panels",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
