@@ -481,8 +481,9 @@ async function startBot() {
                 const list = packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
                 await send(`${picked.name} 🎯\n\n${list}\n\nWhich one do you want?`);
             } else {
-                userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: picked.name, price: picked.price } };
-                await send(`Nice choice! ${picked.name} for ₹${picked.price} 🎯\n\nWhat's your name?`);
+                // no packages set — ask duration as free text
+                userStates[sender] = { ...st, step: 'ASK_DURATION', service: picked };
+                await send(`${picked.name} 🎯\n\nHow many days do you want?\n\n*1* 1 Day\n*2* 3 Days\n*3* 7 Days\n*4* 15 Days\n*5* 30 Days\n\nOr just type the number of days`);
             }
             return;
         }
@@ -497,6 +498,19 @@ async function startBot() {
             }
             userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} ${picked.label}`, price: picked.price } };
             await send(`${st.service.name} ${picked.label} for ₹${picked.price} ✅\n\nWhat's your name?`);
+            return;
+        }
+
+        // ── ASK_DURATION ──────────────────────────────────────────
+        if (st.step === 'ASK_DURATION') {
+            const durationMap = { '1': '1 Day', '2': '3 Days', '3': '7 Days', '4': '15 Days', '5': '30 Days' };
+            const duration = durationMap[t] || (t.match(/\d+/) ? t + (t.includes('day') ? '' : ' Day(s)') : null);
+            if (!duration) {
+                await send(`Just reply with a number:\n*1* 1 Day\n*2* 3 Days\n*3* 7 Days\n*4* 15 Days\n*5* 30 Days\n\nOr type how many days you want`);
+                return;
+            }
+            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} — ${duration}`, price: st.service.price || 0 } };
+            await send(`${st.service.name} for ${duration} ✅\n\nWhat's your name?`);
             return;
         }
 
@@ -515,8 +529,15 @@ async function startBot() {
 
         // ── ASK_UID ───────────────────────────────────────────────
         if (st.step === 'ASK_UID') {
-            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { ...st.orderData, uid: rawText } };
-            await send(`Got the UID ✅ What's your name?`);
+            userStates[sender] = { ...st, step: 'ASK_GAME_PHONE', orderData: { ...st.orderData, uid: rawText } };
+            await send(`Got the UID ✅\n\nNow send the phone number linked to your game account (with country code) 📱\nExample: *9779708838261* (977 = Nepal)`);
+            return;
+        }
+
+        // ── ASK_GAME_PHONE ────────────────────────────────────────
+        if (st.step === 'ASK_GAME_PHONE') {
+            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { ...st.orderData, gamePhone: rawText } };
+            await send(`Perfect ✅ What's your name?`);
             return;
         }
 
@@ -562,7 +583,7 @@ async function startBot() {
             const od = st.orderData;
             await fbPost('orders', {
                 type: od.type, game: od.game || null, package: od.package || null,
-                uid: od.uid || null, item: od.item || null,
+                uid: od.uid || null, gamePhone: od.gamePhone || null, item: od.item || null,
                 name: od.name, phone: od.phone, price: od.price,
                 paymentProof: proof, waNumber: waNum,
                 status: 'Pending', timestamp: new Date().toISOString()

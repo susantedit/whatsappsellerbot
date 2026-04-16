@@ -116,20 +116,20 @@ body{font-family:'Rajdhani',sans-serif;background:var(--bg);color:var(--text);mi
 .h-scroll::-webkit-scrollbar{display:none;}
 
 /* ── Game card ── */
-.game-card{flex-shrink:0;width:150px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:border-color 0.2s;}
-.game-card:hover{border-color:var(--red);}
-.game-card img{width:100%;height:100px;object-fit:cover;}
-.game-card-body{padding:10px 12px;}
-.game-card-body h4{font-size:0.9rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.game-card-body p{font-size:0.78rem;color:var(--red);font-weight:700;margin-top:2px;}
+.game-card{flex-shrink:0;width:160px;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all 0.2s;}
+.game-card:hover{border-color:var(--red);transform:translateY(-2px);box-shadow:0 8px 24px rgba(230,57,70,0.2);}
+.game-card-img{width:100%;height:110px;display:flex;align-items:center;justify-content:center;font-size:3rem;background:linear-gradient(135deg,#1a0000,#0d0d0d);}
+.game-card-body{padding:12px;}
+.game-card-body h4{font-size:0.95rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.game-card-body p{font-size:0.8rem;color:var(--red);font-weight:700;margin-top:3px;}
 
 /* ── Service card ── */
-.svc-card{flex-shrink:0;width:160px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;}
-.svc-card:hover{border-color:var(--red);box-shadow:0 0 15px var(--red-glow);}
-.svc-card .svc-icon{font-size:1.8rem;margin-bottom:8px;}
-.svc-card h4{font-size:0.9rem;font-weight:700;color:#fff;}
-.svc-card p{font-size:0.8rem;color:var(--muted);margin-top:2px;}
-.svc-card .price{font-size:0.95rem;font-weight:800;color:var(--red);margin-top:6px;}
+.svc-card{flex-shrink:0;width:170px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 16px;cursor:pointer;transition:all 0.2s;}
+.svc-card:hover{border-color:var(--red);transform:translateY(-2px);box-shadow:0 8px 24px rgba(230,57,70,0.2);}
+.svc-card .svc-icon{font-size:2rem;margin-bottom:10px;}
+.svc-card h4{font-size:0.92rem;font-weight:700;color:#fff;line-height:1.3;}
+.svc-card p{font-size:0.78rem;color:var(--muted);margin-top:4px;line-height:1.4;}
+.svc-card .price{font-size:1rem;font-weight:800;color:var(--red);margin-top:8px;}
 
 /* ── Bottom Nav ── */
 nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;height:65px;background:#0d0d0d;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center;z-index:50;}
@@ -287,6 +287,9 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
     <div class="nav-btn" id="navOrders" onclick="switchTab('orders')">
       <i class="fas fa-receipt"></i> Orders
     </div>
+    <a href="admin.php" class="nav-btn" style="text-decoration:none;">
+      <i class="fas fa-shield-alt"></i> Admin
+    </a>
     <div class="nav-btn" id="navLogout" onclick="doLogout()">
       <i class="fas fa-sign-out-alt"></i> Logout
     </div>
@@ -310,7 +313,7 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
         ✅ Admin panel included<br>
         ✅ Firebase database<br>
         ✅ AI-powered replies<br>
-        ✅ 12 months support
+        ✅ 10 months support
       </div>
       <div style="text-align:center;margin-bottom:16px;">
         <div style="color:var(--muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:4px;">SETUP FEE</div>
@@ -482,7 +485,7 @@ function loadGames() {
             el.className = 'game-card';
             el.style.cursor = 'pointer';
             el.innerHTML = `
-                <div style="height:100px;background:linear-gradient(135deg,#1a0000,#0d0d0d);display:flex;align-items:center;justify-content:center;font-size:2.5rem;">🎮</div>
+                <div class="game-card-img">${g.name.toLowerCase().includes('free fire') ? '🔥' : g.name.toLowerCase().includes('pubg') ? '🎯' : g.name.toLowerCase().includes('cod') ? '💥' : '🎮'}</div>
                 <div class="game-card-body">
                     <h4>${g.name}</h4>
                     <p>${minPrice ? 'From ₹' + minPrice : 'View packages'}</p>
@@ -501,15 +504,17 @@ function loadServices() {
         if (!snap.exists()) { c.innerHTML = '<p style="color:var(--muted);padding:8px 0;font-size:0.85rem;">No services yet</p>'; return; }
         snap.forEach(child => {
             const s = child.val(); const sid = child.key;
+            const pkgs = s.packages ? Object.values(s.packages) : [];
+            const minPrice = pkgs.length ? Math.min(...pkgs.map(p => parseFloat(p.price))) : s.price;
             const el = document.createElement('div');
             el.className = 'svc-card';
             el.style.cursor = 'pointer';
             el.innerHTML = `
                 <div class="svc-icon">🎯</div>
                 <h4>${s.name}</h4>
-                <p>${s.description || ''}</p>
-                <div class="price">₹${s.price}</div>`;
-            el.onclick = () => openBuyModal('service', sid, s.name, null, s.price);
+                <p>${s.description || 'Free Fire Panel'}</p>
+                <div class="price">From ₹${minPrice}</div>`;
+            el.onclick = () => openBuyModal('service', sid, s.name, s.packages || null, minPrice);
             c.appendChild(el);
         });
     });
@@ -582,8 +587,7 @@ function openBuyModal(type, id, name, packages, fixedPrice) {
         _order.item  = name;
         // service: show QR immediately
         showPaymentStep();
-    } else {
-        // topup — show package list first
+    } else {        // topup — show package list first
         const list = document.getElementById('packageList');
         list.innerHTML = '';
         if (packages) {

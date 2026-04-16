@@ -581,7 +581,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon"><i class="fas fa-indian-rupee-sign"></i></div>
-                        <div class="stat-info"><h3 id="stat-revenue">₹0</h3><p>Total Revenue</p></div>
+                        <div class="stat-info"><h3 id="stat-revenue">₹0</h3><p>Verified Revenue</p></div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon"><i class="fas fa-bag-shopping"></i></div>
@@ -884,17 +884,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
 
                 all.forEach(o => {
                     const price = parseFloat(o.price || 0);
-                    revenue += price; total++;
+                    // ✅ Only count Completed orders in revenue — ignores fake/unverified
+                    if (o.status === 'Completed') revenue += price;
+                    total++;
                     if ((o.status || 'Pending') === 'Pending') pending++;
                     if (o.status === 'Completed') completed++;
 
-                    const typeLabel = o.type === 'topup' ? '🎮 Top-Up'
-                                    : o.type === 'service' ? '🛠️ Service'
+                    const typeLabel = o.type === 'topup'     ? '🎮 Top-Up'
+                                    : o.type === 'service'   ? '🛠️ Service'
+                                    : o.type === 'bot_setup' ? '🤖 Bot Setup'
                                     : '📩 Custom';
                     const details = o.type === 'topup'
-                        ? `${o.game} — ${o.package}<br><small style="color:var(--text-muted)">UID: ${o.uid || '-'}</small>`
+                        ? `${o.game} — ${o.package}<br><small style="color:var(--text-muted)">UID: ${o.uid || '-'} | Game Phone: ${o.gamePhone || '-'}</small>`
                         : o.type === 'service' ? o.item
-                        : o.message || '-';
+                        : o.message || o.item || '-';
                     const status = o.status || 'Pending';
                     const sc = status === 'Completed' ? 'status-delivered'
                               : status === 'Processing' ? 'status-preparing' : 'status-placed';
@@ -909,12 +912,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                         </td>
                         <td data-label="Details">${details}</td>
                         <td data-label="Amount" style="font-weight:800;color:var(--primary-dark)">₹${price}</td>
-                        <td data-label="Status">
-                            <select class="status-select ${sc}" onchange="updateOrderStatus('${o.id}',this.value)">
+                        <td data-label="Status" style="display:flex;gap:8px;align-items:center;">
+                            <select class="status-select ${sc}" onchange="updateOrderStatus('${o.id}',this.value,this)">
                                 <option value="Pending"    ${status==='Pending'    ?'selected':''}>Pending</option>
                                 <option value="Processing" ${status==='Processing' ?'selected':''}>Processing</option>
                                 <option value="Completed"  ${status==='Completed'  ?'selected':''}>Completed</option>
                             </select>
+                            <button onclick="deleteOrder('${o.id}')" title="Delete order" style="background:none;border:1px solid var(--danger);color:var(--danger);width:32px;height:32px;border-radius:6px;cursor:pointer;flex-shrink:0;font-size:0.85rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </td>`;
                     body.appendChild(tr);
                 });
@@ -930,10 +936,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
         const sanitize = str => String(str).replace(/[<>"'`]/g, '').trim().slice(0, 200);
         const sanitizeNum = val => { const n = parseFloat(val); return isNaN(n) || n < 0 ? null : n; };
 
-        window.updateOrderStatus = (id, val) => {
+        window.updateOrderStatus = (id, val, sel) => {
             const allowed = ['Pending', 'Processing', 'Completed'];
-            if (!allowed.includes(val)) return; // reject unexpected values
+            if (!allowed.includes(val)) return;
             db.ref('orders/' + id).update({ status: val });
+            // update select color live
+            if (sel) {
+                sel.className = 'status-select ' + (val === 'Completed' ? 'status-delivered' : val === 'Processing' ? 'status-preparing' : 'status-placed');
+            }
+        };
+        window.deleteOrder = (id) => {
+            if (!confirm('Delete this order? This cannot be undone.')) return;
+            db.ref('orders/' + id).remove();
         };
         window.deleteItem = (path, id) => { if (confirm('Delete permanently?')) db.ref(`${path}/${id}`).remove(); };
 
@@ -1206,7 +1220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                     { label: 'Weekly Member',  price: '220'  },
                     { label: 'Monthly Member', price: '1050' },
                     { label: 'Weekly Lite',    price: '70'   },
-                    { label: 'Level Up Pass',  price: '695'  }
+                    { label: 'Level Up Pass',  price: '795'  }
                   ]
                 },
                 { name: 'PUBG Mobile',
