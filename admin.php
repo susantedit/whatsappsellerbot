@@ -1,4 +1,15 @@
 <?php
+// ── Load .env file (InfinityFree / shared hosting) ────────────
+$envFile = __DIR__ . '/.env';
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+        if (strpos($line, '=') === false) continue;
+        [$key, $val] = explode('=', $line, 2);
+        putenv(trim($key) . '=' . trim($val));
+    }
+}
+
 // ── TOTP 2FA — server-side verification ──────────────────────
 // Uses Time-based One-Time Password (RFC 6238) — works with
 // Google Authenticator, Authy, any TOTP app.
