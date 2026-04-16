@@ -109,15 +109,7 @@ if (!empty($gate_pass)) {
 // ============================================================
 // SECURITY: Firebase config loaded from environment variables.
 // ============================================================
-$firebaseConfig = [
-  "apiKey"            => "",
-  "authDomain"        => "",
-  "databaseURL"       => "",
-  "projectId"         => "",
-  "storageBucket"     => "",
-  "messagingSenderId" => "",
-  "appId"             => "",
-];
+$firebaseConfig = ["apiKey"=>"","authDomain"=>"","databaseURL"=>"","projectId"=>"","storageBucket"=>"","messagingSenderId"=>"","appId"=>""];
 
 // ── Admin login rate limiting (server-side) ───────────────────
 // Max 10 login attempts per IP per 15 minutes

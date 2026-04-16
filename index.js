@@ -127,7 +127,7 @@ async function sendOrderEmail(order) {
 
     <!-- CTA -->
     <div style="padding:0 32px 28px;">
-      <a href="https://whatsapp.com/send?phone=${order.waNumber}" style="display:inline-block;background:#25d366;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem;letter-spacing:1px;">💬 Reply on WhatsApp</a>
+      <a href="https://wa.me/${String(order.waNumber).replace(/[^0-9]/g, '')}" style="display:inline-block;background:#25d366;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem;letter-spacing:1px;">💬 Reply on WhatsApp</a>
     </div>
 
     <!-- Footer -->
@@ -366,7 +366,7 @@ async function startBot() {
                     `✅ Admin panel included\n` +
                     `✅ Firebase database\n` +
                     `✅ AI-powered replies\n` +
-                    `✅ 12 months support\n\n` +
+                    `✅ 4 months support\n\n` +
                     `💰 *Setup Fee: Rs. 1,500*\n\n` +
                     `To proceed, please make the payment of *Rs. 1,500* and send the screenshot here 📸\n\n` +
                     `After payment Susant will contact you to set everything up 🙌`
@@ -425,11 +425,11 @@ async function startBot() {
         if (st.step === 'BOT_INQUIRY') {
             const hasImage = !!(msg.message?.imageMessage);
             await fbPost('orders', {
-                type: 'bot_setup', item: 'WhatsApp Bot Setup 12 months', price: 1500,
+                type: 'bot_setup', item: 'WhatsApp Bot Setup 4 months', price: 1500,
                 paymentProof: hasImage ? '[Screenshot received]' : rawText,
                 waNumber: waNum, status: 'Pending', timestamp: new Date().toISOString()
             });
-            await sendOrderEmail({ type: 'bot_setup', name: waNum, phone: '-', item: 'Bot Setup 12 months', price: 1500, waNumber: waNum, timestamp: new Date().toISOString() });
+            await sendOrderEmail({ type: 'bot_setup', name: waNum, phone: '-', item: 'Bot Setup 4 months', price: 1500, waNumber: waNum, timestamp: new Date().toISOString() });
             userStates[sender] = { step: 'DONE' };
             await send(`Payment received! ✅ Susant will contact you shortly to set up your bot. Thank you 🙏`);
             return;
@@ -437,6 +437,15 @@ async function startBot() {
 
         // ── PICK_GAME ─────────────────────────────────────────────
         if (st.step === 'PICK_GAME') {
+            // try AI first for questions/general chat
+            if (GEMINI_KEY && isNaN(parseInt(t)) && t.length > 3 && !t.includes('other') && !t.includes('custom')) {
+                const ctx = await buildBusinessContext();
+                const aiReply = await askGemini(rawText, ctx, userName);
+                if (aiReply && !aiReply.includes('[ORDER_INTENT]')) {
+                    await send(aiReply);
+                    return;
+                }
+            }
             const games = st.games, otherNum = games.length + 1;
             if (t === String(otherNum) || t.includes('other') || t.includes('custom')) {
                 userStates[sender] = { ...st, step: 'OTHER_GAME' };
@@ -468,22 +477,29 @@ async function startBot() {
 
         // ── PICK_SERVICE ──────────────────────────────────────────
         if (st.step === 'PICK_SERVICE') {
+            // try AI first for non-number inputs (questions, general chat)
+            if (GEMINI_KEY && isNaN(parseInt(t)) && t.length > 3) {
+                const ctx = await buildBusinessContext();
+                const aiReply = await askGemini(rawText, ctx, userName);
+                if (aiReply && !aiReply.includes('[ORDER_INTENT]')) {
+                    await send(aiReply);
+                    return;
+                }
+            }
             const picked = pickItem(st.services, t, (s, input) => s.name.toLowerCase().includes(input));
             if (!picked) {
                 const list = st.services.map((s, i) => `*${i+1}.* ${s.name}`).join('\n');
                 await send(`Couldn't find that one. Here are the options:\n\n${list}\n\nReply with a number`);
                 return;
             }
-            // if service has packages, show them like games
             const packages = picked.packages ? Object.keys(picked.packages).map(k => ({ id: k, ...picked.packages[k] })) : [];
             if (packages.length) {
                 userStates[sender] = { ...st, step: 'PICK_SERVICE_PKG', service: picked, packages };
                 const list = packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
-                await send(`${picked.name} 🎯\n\n${list}\n\nWhich one do you want?`);
+                await send(`${picked.name} 🎯\n\n${list}\n\nWhich package do you want?`);
             } else {
-                // no packages set — ask duration as free text
                 userStates[sender] = { ...st, step: 'ASK_DURATION', service: picked };
-                await send(`${picked.name} 🎯\n\nHow many days do you want?\n\n*1* 1 Day\n*2* 3 Days\n*3* 7 Days\n*4* 15 Days\n*5* 30 Days\n\nOr just type the number of days`);
+                await send(`${picked.name} 🎯\n\nHow many days?\n\n*D1* — 1 Day\n*D2* — 3 Days\n*D3* — 7 Days\n*D4* — 15 Days\n*D5* — 30 Days\n\nReply with D1, D2, D3, D4 or D5`);
             }
             return;
         }
@@ -503,10 +519,16 @@ async function startBot() {
 
         // ── ASK_DURATION ──────────────────────────────────────────
         if (st.step === 'ASK_DURATION') {
-            const durationMap = { '1': '1 Day', '2': '3 Days', '3': '7 Days', '4': '15 Days', '5': '30 Days' };
-            const duration = durationMap[t] || (t.match(/\d+/) ? t + (t.includes('day') ? '' : ' Day(s)') : null);
+            const durationMap = {
+                'd1': '1 Day',  '1 day': '1 Day',  '1': '1 Day',
+                'd2': '3 Days', '3 days': '3 Days', '3': '3 Days',
+                'd3': '7 Days', '7 days': '7 Days', '7': '7 Days',
+                'd4': '15 Days','15 days': '15 Days','15': '15 Days',
+                'd5': '30 Days','30 days': '30 Days','30': '30 Days',
+            };
+            const duration = durationMap[t] || null;
             if (!duration) {
-                await send(`Just reply with a number:\n*1* 1 Day\n*2* 3 Days\n*3* 7 Days\n*4* 15 Days\n*5* 30 Days\n\nOr type how many days you want`);
+                await send(`Please reply with:\n*D1* — 1 Day\n*D2* — 3 Days\n*D3* — 7 Days\n*D4* — 15 Days\n*D5* — 30 Days`);
                 return;
             }
             userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} — ${duration}`, price: st.service.price || 0 } };
@@ -588,20 +610,17 @@ async function startBot() {
                 paymentProof: proof, waNumber: waNum,
                 status: 'Pending', timestamp: new Date().toISOString()
             });
-            // send email notification to owner
             await sendOrderEmail({ ...od, waNumber: waNum, timestamp: new Date().toISOString() });
-            // save order ref to user profile for status notifications
             await saveUser(waNum, { lastOrderWa: sender });
             userStates[sender] = { step: 'RETURNING', name: od.name };
             await send(
-                `Order received ${od.name}! 🎉\n\n` +
+                `Got it ${od.name}! 🙌\n\n` +
                 (od.game ? `Game: ${od.game}\nPackage: ${od.package}\nUID: ${od.uid}\n` : `Service: ${od.item}\n`) +
-                `Amount: ₹${od.price}\n\nWe will process it after verifying your payment. Usually takes 15–30 minutes. We will message you when it's done 🙌`
+                `Amount: ₹${od.price}\n\n` +
+                `⏳ *Verification in process...*\nWe are checking your payment. This usually takes 15–30 minutes. We'll message you once it's confirmed ✅`
             );
             await delay(600);
-            await send(
-                `⚠️ *Disclaimer:*\nIf your payment does NOT include your Name and Phone Number in the remark, your order cannot be verified and the amount may not be recoverable.\n\nPlease make sure you added: *${od.name} - ${od.phone}* in the remark before paying 🙏`
-            );
+            await send(`⚠️ *Reminder:* Make sure your payment remark includes *${od.name} - ${od.phone}* — otherwise we can't verify it 🙏`);
             await delay(400);
             await send(`Need anything else? Type *restart* for a new order or *stop* to end the chat`);
             return;

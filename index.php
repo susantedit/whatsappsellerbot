@@ -16,15 +16,7 @@ if (file_exists($envFile)) {
 }
 function env($k, $d = '') { return $_ENV[$k] ?? getenv($k) ?: $d; }
 
-$firebaseConfig = [
-  "apiKey"            => "",
-  "authDomain"        => "",
-  "databaseURL"       => "",
-  "projectId"         => "",
-  "storageBucket"     => "",
-  "messagingSenderId" => "",
-  "appId"             => "",
-];
+$firebaseConfig = ["apiKey"=>"","authDomain"=>"","databaseURL"=>"","projectId"=>"","storageBucket"=>"","messagingSenderId"=>"","appId"=>""];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -188,6 +180,9 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
       <button class="btn google" id="googleBtn">
         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18"> Sign in with Google
       </button>
+      <a href="admin.php" class="btn" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;">
+        <i class="fas fa-shield-alt"></i> Admin Panel
+      </a>
       <div class="auth-switch">No account? <a href="#" id="gotoRegister">Register</a></div>
     </div>
   </div>
@@ -318,7 +313,7 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
       <div style="text-align:center;margin-bottom:16px;">
         <div style="color:var(--muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:4px;">SETUP FEE</div>
         <div style="font-family:'Orbitron',sans-serif;font-size:2rem;color:var(--red);font-weight:900;">Rs. 1,500</div>
-        <div style="color:var(--muted);font-size:0.8rem;">One-time payment · 12 months support</div>
+        <div style="color:var(--muted);font-size:0.8rem;">One-time payment · 4 months support</div>
       </div>
       <button class="btn solid" onclick="showBotPayment()"><i class="fas fa-arrow-right"></i> PROCEED TO PAYMENT</button>
     </div>
@@ -729,7 +724,7 @@ function confirmBotPayment() {
 
     const user  = auth.currentUser;
     db.ref('orders').push({
-        type: 'bot_setup', item: 'WhatsApp Bot Setup 12 months', price: 1500,
+        type: 'bot_setup', item: 'WhatsApp Bot Setup 4 months', price: 1500,
         name, phone, paymentProof: 'Web order - payment claimed',
         waNumber: phone, userEmail: user ? user.email : 'guest',
         source: 'web', status: 'Pending', timestamp: new Date().toISOString()
