@@ -4,6 +4,7 @@ const pino   = require('pino');
 const fs     = require('fs');
 
 const FIREBASE_URL = process.env.FIREBASE_URL;
+const GEMINI_KEY   = process.env.GEMINI_API_KEY;
 
 const userStates = {};
 
@@ -56,6 +57,72 @@ function pickItem(items, input, matchFn) {
     const num = parseInt(input);
     if (!isNaN(num) && num >= 1 && num <= items.length) return items[num - 1];
     return items.find(item => matchFn(item, input.toLowerCase())) || null;
+}
+
+// ── Gemini AI ────────────────────────────────────────────────
+async function askGemini(userMessage, businessContext) {
+    if (!GEMINI_KEY) return null;
+    try {
+        const systemPrompt =
+            `You are a WhatsApp sales bot for a gaming panel and diamond top-up business.\n` +
+            `Reply in the same language the user writes (Hindi, English, or mixed).\n` +
+            `Be short, friendly, and use gaming slang. Max 3 sentences.\n` +
+            `Never make up prices — only use what's listed below.\n` +
+            `If user wants to ORDER something, reply with exactly: [ORDER_INTENT]\n` +
+            `If user asks about something not in your catalog, say you don't have it.\n\n` +
+            `YOUR CATALOG:\n${businessContext}`;
+
+        const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: `${systemPrompt}\n\nUser: ${userMessage}` }]
+                    }],
+                    generationConfig: { maxOutputTokens: 150, temperature: 0.7 }
+                })
+            }
+        );
+        const data = await res.json();
+        return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+    } catch (e) {
+        console.error('Gemini error:', e.message);
+        return null;
+    }
+}
+
+// ── Build business context from Firebase ─────────────────────
+async function getBusinessContext() {
+    const [games, services, settings] = await Promise.all([
+        fbGet('games'), fbGet('services'), fbGet('settings')
+    ]);
+
+    let ctx = '';
+    const owner = settings?.owner || 'the owner';
+    ctx += `Business owner: ${owner}\n\n`;
+
+    if (games) {
+        ctx += `GAME TOP-UPS:\n`;
+        Object.values(games).forEach(g => {
+            ctx += `- ${g.name}:\n`;
+            if (g.packages) {
+                Object.values(g.packages).forEach(p => {
+                    ctx += `  • ${p.label} = ₹${p.price}\n`;
+                });
+            }
+        });
+    }
+
+    if (services) {
+        ctx += `\nPANELS & SERVICES:\n`;
+        Object.values(services).forEach(s => {
+            ctx += `- ${s.name}: ₹${s.price}${s.description ? ' (' + s.description + ')' : ''}\n`;
+        });
+    }
+
+    return ctx;
 }
 
 // ── Bot ──────────────────────────────────────────────────────────
@@ -180,8 +247,6 @@ async function startBot() {
             await send(`Please reply with *1*, *2*, or *3* 😊`);
             return;
         }
-
-        // ── PICK_GAME ─────────────────────────────────────────────
         if (st.step === 'PICK_GAME') {
             const games    = st.games;
             const otherNum = games.length + 1;
@@ -304,6 +369,22 @@ async function startBot() {
         if (st.step === 'DONE') {
             await send(`Type *restart* to place a new order or *stop* to end 😊`);
             return;
+        }
+
+        // ── AI fallback — Gemini handles anything not caught above ──
+        if (GEMINI_KEY) {
+            const ctx = await getBusinessContext();
+            const aiReply = await askGemini(rawText, ctx);
+            if (aiReply) {
+                if (aiReply.includes('[ORDER_INTENT]')) {
+                    delete userStates[sender];
+                    userStates[sender] = { step: 'PICK_CATEGORY' };
+                    await send(`Sure! Let's get your order sorted 🎮\n\n*1* — General 💬\n*2* — Panels 🎯\n*3* — Diamond Top-Up 💎\n\n_Reply with 1, 2, or 3_`);
+                } else {
+                    await send(aiReply);
+                }
+                return;
+            }
         }
 
         await send(`I didn't get that 😅\n\nType *help* to see options or *restart* to start over.`);

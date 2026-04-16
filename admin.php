@@ -1,13 +1,21 @@
 <?php
-// ── Load .env file (InfinityFree / shared hosting) ────────────
+// ── Load .env file (shared hosting compatible) ───────────────
 $envFile = __DIR__ . '/.env';
 if (file_exists($envFile)) {
-    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-        if (strpos(trim($line), '#') === 0) continue;
-        if (strpos($line, '=') === false) continue;
-        [$key, $val] = explode('=', $line, 2);
-        putenv(trim($key) . '=' . trim($val));
+    $handle = fopen($envFile, 'r');
+    if ($handle) {
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) continue;
+            [$key, $val] = explode('=', $line, 2);
+            $_ENV[trim($key)] = trim($val);
+            putenv(trim($key) . '=' . trim($val));
+        }
+        fclose($handle);
     }
+}
+function env($key, $default = '') {
+    return $_ENV[$key] ?? getenv($key) ?: $default;
 }
 
 // ── TOTP 2FA — server-side verification ──────────────────────
@@ -102,13 +110,13 @@ if (!empty($gate_pass)) {
 // SECURITY: Firebase config loaded from environment variables.
 // ============================================================
 $firebaseConfig = [
-  "apiKey"            => getenv('FIREBASE_API_KEY'),
-  "authDomain"        => getenv('FIREBASE_AUTH_DOMAIN'),
-  "databaseURL"       => getenv('FIREBASE_DATABASE_URL'),
-  "projectId"         => getenv('FIREBASE_PROJECT_ID'),
-  "storageBucket"     => getenv('FIREBASE_STORAGE_BUCKET'),
-  "messagingSenderId" => getenv('FIREBASE_MESSAGING_SENDER_ID'),
-  "appId"             => getenv('FIREBASE_APP_ID')
+  "apiKey"            => "AIzaSyBMKKuGr9Djv9_9PhmC3GFedLX6PPzV9n4",
+  "authDomain"        => "whatsappagent-b7c36.firebaseapp.com",
+  "databaseURL"       => "https://whatsappagent-b7c36-default-rtdb.firebaseio.com",
+  "projectId"         => "whatsappagent-b7c36",
+  "storageBucket"     => "whatsappagent-b7c36.firebasestorage.app",
+  "messagingSenderId" => "116260179438",
+  "appId"             => "1:116260179438:web:6ffd88d4ee4af3f4b792ff"
 ];
 
 // ── Admin login rate limiting (server-side) ───────────────────
@@ -144,97 +152,118 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JavaGoat Admin | Premium Dashboard</title>
+    <title>⚔️ Game Panel | Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&display=swap');
+
         :root {
-            --primary: #10b981;
-            --primary-dark: #059669;
-            --primary-soft: #d1fae5;
-            --bg-body: #f8fafc;
-            --bg-card: #ffffff;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --border: #e2e8f0;
+            --primary: #e63946;
+            --primary-dark: #c1121f;
+            --primary-soft: rgba(230,57,70,0.15);
+            --bg-body: #0a0a0a;
+            --bg-card: #111111;
+            --bg-sidebar: #0d0d0d;
+            --text-main: #f0f0f0;
+            --text-muted: #888;
+            --border: rgba(230,57,70,0.2);
             --sidebar-width: 260px;
-            --danger: #ef4444;
+            --danger: #e63946;
             --warning: #f59e0b;
             --info: #3b82f6;
+            --glow: 0 0 20px rgba(230,57,70,0.4);
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body {
             margin: 0;
-            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-family: 'Rajdhani', sans-serif;
             background-color: var(--bg-body);
+            background-image:
+                radial-gradient(ellipse at 20% 50%, rgba(230,57,70,0.05) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 20%, rgba(180,0,0,0.05) 0%, transparent 50%);
             color: var(--text-main);
             display: flex;
             height: 100vh;
             overflow: hidden;
         }
 
-        /* --- Custom Scrollbar --- */
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        /* --- Scrollbar --- */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
 
         /* --- Sidebar --- */
         .sidebar {
             width: var(--sidebar-width);
-            background-color: #0f172a;
+            background: linear-gradient(180deg, #0d0d0d 0%, #0a0a0a 100%);
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             padding: 24px;
             transition: all 0.3s ease;
             z-index: 100;
+            position: relative;
+        }
+        .sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
         }
 
         .logo {
             display: flex;
             align-items: center;
             gap: 12px;
-            font-size: 1.4rem;
-            font-weight: 800;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 900;
             color: white;
             margin-bottom: 40px;
-            letter-spacing: -0.5px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
         }
-        .logo i { color: var(--primary); }
+        .logo i { color: var(--primary); filter: drop-shadow(0 0 8px var(--primary)); }
 
         .nav-links { list-style: none; padding: 0; margin: 0; flex: 1; }
         .nav-item {
             display: flex;
             align-items: center;
             padding: 12px 16px;
-            color: #94a3b8;
+            color: #666;
             text-decoration: none;
-            border-radius: 12px;
-            margin-bottom: 8px;
+            border-radius: 8px;
+            margin-bottom: 6px;
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
+            font-size: 0.95rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
             transition: all 0.2s;
+            border: 1px solid transparent;
         }
-        .nav-item i { width: 24px; font-size: 1.1rem; }
-        .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
-        .nav-item.active { background: var(--primary); color: white; }
-
-        .logout-btn { color: #f87171; margin-top: auto; }
+        .nav-item i { width: 24px; font-size: 1rem; }
+        .nav-item:hover { color: var(--primary); border-color: var(--border); background: var(--primary-soft); }
+        .nav-item.active {
+            background: var(--primary-soft);
+            color: var(--primary);
+            border-color: var(--primary);
+            box-shadow: var(--glow);
+        }
+        .logout-btn { color: #555; margin-top: auto; }
+        .logout-btn:hover { color: var(--primary) !important; }
 
         /* --- Main Layout --- */
-        .main-wrapper {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            position: relative;
-        }
+        .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
         .top-bar {
-            height: 70px;
-            background: white;
+            height: 65px;
+            background: #0d0d0d;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
@@ -242,165 +271,191 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             justify-content: space-between;
         }
 
-        .mobile-toggle { display: none; font-size: 1.5rem; cursor: pointer; }
+        .mobile-toggle { display: none; font-size: 1.5rem; cursor: pointer; color: var(--text-main); }
 
-        .content-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 40px;
-        }
+        .content-area { flex: 1; overflow-y: auto; padding: 30px 40px; }
 
         /* --- Sections --- */
         .section { display: none; }
-        .section.active { display: block; animation: fadeIn 0.4s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .section.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-        .header-flex {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+        .header-flex h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin: 0;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--text-main);
         }
-        .header-flex h1 { font-size: 1.8rem; font-weight: 800; margin: 0; letter-spacing: -1px; }
 
-        /* --- Stats Card --- */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }
+        /* --- Stats --- */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 30px; }
         .stat-card {
-            background: white;
-            padding: 24px;
-            border-radius: 20px;
+            background: var(--bg-card);
+            padding: 20px 24px;
+            border-radius: 12px;
             border: 1px solid var(--border);
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 16px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.2s;
         }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: var(--primary);
+        }
+        .stat-card:hover { border-color: var(--primary); }
         .stat-icon {
-            width: 54px; height: 54px;
+            width: 48px; height: 48px;
             background: var(--primary-soft);
             color: var(--primary);
-            border-radius: 14px;
+            border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 1.4rem;
+            font-size: 1.3rem;
+            border: 1px solid rgba(230,57,70,0.3);
         }
-        .stat-info h3 { margin: 0; font-size: 1.6rem; font-weight: 800; }
-        .stat-info p { margin: 2px 0 0; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; }
+        .stat-info h3 { margin: 0; font-size: 1.5rem; font-weight: 800; font-family: 'Orbitron', sans-serif; color: #fff; }
+        .stat-info p { margin: 3px 0 0; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
 
         /* --- Orders Table --- */
         .table-container {
-            background: white;
-            border-radius: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
             border: 1px solid var(--border);
             overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
         }
         table { width: 100%; border-collapse: collapse; }
         th {
-            background: #f8fafc;
-            padding: 16px 24px;
+            background: #0d0d0d;
+            padding: 14px 20px;
             text-align: left;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-muted);
+            letter-spacing: 2px;
+            color: var(--primary);
             border-bottom: 1px solid var(--border);
+            font-family: 'Orbitron', sans-serif;
         }
         td {
-            padding: 18px 24px;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.95rem;
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.9rem;
             vertical-align: middle;
+            color: var(--text-main);
         }
         tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(230,57,70,0.03); }
 
-        .customer-info { line-height: 1.4; }
-        .customer-info .name { font-weight: 700; display: block; }
-        .customer-info .phone { font-size: 0.85rem; color: var(--text-muted); }
-
+        .customer-info .name { font-weight: 700; display: block; color: #fff; }
+        .customer-info .phone { font-size: 0.82rem; color: var(--text-muted); }
         .item-list { font-size: 0.85rem; color: var(--text-muted); max-width: 250px; line-height: 1.5; }
-        
-        /* Status Select Styling */
+
+        /* Status */
         .status-select {
-            padding: 8px 12px;
-            border-radius: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
             font-weight: 700;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             border: 1px solid transparent;
             cursor: pointer;
             outline: none;
-            transition: all 0.2s;
             width: 140px;
+            font-family: 'Rajdhani', sans-serif;
+            letter-spacing: 1px;
         }
-        
-        .status-placed { background: #fef3c7; color: #92400e; }
-        .status-preparing { background: #e0e7ff; color: #3730a3; }
-        .status-delivery { background: #ffedd5; color: #9a3412; }
-        .status-delivered { background: #d1fae5; color: #065f46; }
+        .status-placed    { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+        .status-preparing { background: rgba(99,102,241,0.15); color: #818cf8; border-color: rgba(99,102,241,0.3); }
+        .status-delivery  { background: rgba(249,115,22,0.15); color: #fb923c; border-color: rgba(249,115,22,0.3); }
+        .status-delivered { background: rgba(34,197,94,0.15);  color: #4ade80; border-color: rgba(34,197,94,0.3); }
 
-        /* --- Buttons & Inputs --- */
+        /* --- Buttons --- */
         .btn-add {
-            background: var(--primary);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 12px;
-            border: none;
+            background: transparent;
+            color: var(--primary);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--primary);
             font-weight: 700;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
             cursor: pointer;
             display: flex; align-items: center; gap: 8px;
-            transition: 0.3s;
+            transition: all 0.2s;
         }
-        .btn-add:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        .btn-add:hover {
+            background: var(--primary);
+            color: white;
+            box-shadow: var(--glow);
+        }
 
-        /* --- Grid for Menu/Restaurants --- */
-        .menu-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 24px;
-        }
+        /* --- Grid Cards --- */
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
         .admin-card {
-            background: white; border-radius: 20px; overflow: hidden;
-            border: 1px solid var(--border); position: relative;
+            background: var(--bg-card);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            position: relative;
+            transition: border-color 0.2s;
         }
-        .admin-card img { width: 100%; height: 160px; object-fit: cover; }
-        .admin-card-body { padding: 20px; }
-        .admin-card h4 { margin: 0 0 5px; font-weight: 700; font-size: 1.1rem; }
+        .admin-card:hover { border-color: var(--primary); }
+        .admin-card img { width: 100%; height: 140px; object-fit: cover; }
+        .admin-card-body { padding: 16px; }
+        .admin-card h4 { margin: 0 0 5px; font-weight: 700; font-size: 1rem; color: #fff; }
         .delete-btn {
-            position: absolute; top: 10px; right: 10px;
-            background: white; color: var(--danger);
-            border: none; width: 32px; height: 32px; border-radius: 8px;
-            cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            position: absolute; top: 8px; right: 8px;
+            background: rgba(0,0,0,0.7); color: var(--danger);
+            border: 1px solid var(--danger); width: 30px; height: 30px;
+            border-radius: 6px; cursor: pointer;
         }
 
         /* --- Auth Overlay --- */
         #authOverlay {
-            position: fixed; inset: 0; background: var(--bg-body);
+            position: fixed; inset: 0;
+            background: radial-gradient(ellipse at center, #1a0000 0%, #0a0a0a 70%);
             z-index: 2000; display: flex; align-items: center; justify-content: center;
         }
         .login-box {
-            background: white; padding: 40px; border-radius: 30px;
-            width: 100%; max-width: 400px; border: 1px solid var(--border);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.05); text-align: center;
+            background: #111;
+            padding: 40px;
+            border-radius: 16px;
+            width: 100%; max-width: 400px;
+            border: 1px solid var(--border);
+            box-shadow: var(--glow);
+            text-align: center;
         }
         .login-box input {
-            width: 100%; padding: 16px; margin-bottom: 15px;
-            border: 1px solid var(--border); border-radius: 12px;
-            font-family: inherit; font-size: 1rem;
+            width: 100%; padding: 14px 16px; margin-bottom: 12px;
+            border: 1px solid var(--border); border-radius: 8px;
+            font-family: 'Rajdhani', sans-serif; font-size: 1rem;
+            background: #1a1a1a; color: #fff;
         }
+        .login-box input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(230,57,70,0.2); }
 
         /* --- Modals --- */
         .modal {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
             z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+            backdrop-filter: blur(4px);
         }
         .modal-content {
-            background: white; padding: 30px; border-radius: 24px;
-            width: 100%; max-width: 450px; position: relative;
+            background: #111; padding: 30px; border-radius: 14px;
+            width: 100%; max-width: 440px; position: relative;
+            border: 1px solid var(--border); box-shadow: var(--glow);
         }
-        .close-modal { position: absolute; right: 20px; top: 20px; cursor: pointer; font-size: 1.5rem; }
+        .modal-content h2 { color: #fff; font-family: 'Orbitron', sans-serif; font-size: 1rem; letter-spacing: 2px; }
+        .close-modal { position: absolute; right: 20px; top: 20px; cursor: pointer; font-size: 1.4rem; color: var(--text-muted); }
+        .close-modal:hover { color: var(--primary); }
 
         /* =======================================================
            RESPONSIVE REWRITE
@@ -425,15 +480,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             thead { display: none; }
             
             tr {
-                background: white; margin-bottom: 20px; padding: 20px;
-                border-radius: 20px; border: 1px solid var(--border);
-                box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+                background: #111; margin-bottom: 16px; padding: 16px;
+                border-radius: 12px; border: 1px solid var(--border);
             }
             
             td {
                 display: flex; justify-content: space-between; align-items: center;
-                padding: 12px 0; border-bottom: 1px solid #f1f5f9;
-                text-align: right; font-size: 0.9rem;
+                padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+                text-align: right; font-size: 0.9rem; color: var(--text-main);
             }
             td:last-child { border: none; padding-bottom: 0; }
             td:first-child { padding-top: 0; }
@@ -457,30 +511,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
     <div id="authOverlay">
         <!-- Step 1: Firebase login -->
         <div class="login-box" id="loginBox">
-            <div class="logo" style="justify-content:center;color:var(--text-main);margin-bottom:15px;">
-                <i class="fas fa-gamepad"></i> GameServices
+            <div style="font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:900;color:var(--primary);letter-spacing:3px;margin-bottom:5px;text-shadow:0 0 20px rgba(230,57,70,0.5);">
+                ⚔️ GAME PANEL
             </div>
-            <h2 style="margin-bottom:25px;letter-spacing:-1px;">Admin Login</h2>
+            <p style="color:#555;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:25px;">Admin Access</p>
             <input type="email" id="adminEmail" placeholder="Email Address">
             <input type="password" id="adminPassword" placeholder="Password">
-            <p id="authError" style="color:var(--danger);font-size:0.85rem;margin-bottom:15px;font-weight:600;"></p>
-            <button class="btn-add" id="loginBtn" style="width:100%;justify-content:center;">Sign In</button>
+            <p id="authError" style="color:var(--primary);font-size:0.85rem;margin-bottom:12px;font-weight:600;"></p>
+            <button class="btn-add" id="loginBtn" style="width:100%;justify-content:center;font-size:1rem;">
+                <i class="fas fa-sign-in-alt"></i> ENTER
+            </button>
         </div>
 
         <!-- Step 2: 2FA TOTP -->
         <div class="login-box" id="totpBox" style="display:none;">
-            <div class="logo" style="justify-content:center;color:var(--text-main);margin-bottom:15px;">
-                <i class="fas fa-shield-alt" style="color:var(--primary)"></i>
+            <div style="font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:900;color:var(--primary);letter-spacing:3px;margin-bottom:5px;">
+                🔐 2FA VERIFY
             </div>
-            <h2 style="margin-bottom:8px;letter-spacing:-1px;">Two-Factor Auth</h2>
-            <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:25px;">Enter the 6-digit code from your authenticator app</p>
+            <p style="color:#555;font-size:0.82rem;letter-spacing:1px;margin-bottom:20px;">Enter code from authenticator app</p>
             <input type="text" id="totpCode" placeholder="000000" maxlength="6"
-                style="letter-spacing:8px;font-size:1.4rem;text-align:center;font-weight:700;">
-            <p id="totpError" style="color:var(--danger);font-size:0.85rem;margin-bottom:15px;font-weight:600;"></p>
-            <button class="btn-add" id="totpBtn" style="width:100%;justify-content:center;">Verify</button>
-            <p style="margin-top:15px;font-size:0.8rem;color:var(--text-muted);">
-                Use Google Authenticator or Authy
-            </p>
+                style="letter-spacing:10px;font-size:1.6rem;text-align:center;font-weight:700;font-family:'Orbitron',sans-serif;">
+            <p id="totpError" style="color:var(--primary);font-size:0.85rem;margin-bottom:12px;font-weight:600;"></p>
+            <button class="btn-add" id="totpBtn" style="width:100%;justify-content:center;">
+                <i class="fas fa-shield-alt"></i> VERIFY
+            </button>
         </div>
     </div>
 
@@ -512,8 +566,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
     <div class="main-wrapper">
         <div class="top-bar">
             <div class="mobile-toggle" id="menuToggle"><i class="fas fa-bars"></i></div>
-            <div style="font-weight: 700; color: var(--text-muted);">Admin Panel v2.0</div>
-            <div id="userEmailDisplay" style="font-size: 0.85rem; font-weight: 600;"></div>
+            <div style="font-family:'Orbitron',sans-serif;font-weight:700;color:var(--primary);letter-spacing:3px;font-size:0.85rem;">⚔️ GAME PANEL</div>
+            <div id="userEmailDisplay" style="font-size:0.82rem;font-weight:600;color:var(--text-muted);"></div>
         </div>
 
         <div class="content-area">
