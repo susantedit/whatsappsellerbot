@@ -126,6 +126,15 @@ async function startBot() {
 
         console.log(`📩 [${sender.split('@')[0]}] ${rawText}`);
 
+        // ── Silent users (chose General) — ignore for 24 hours ──
+        if (userStates[sender]?.step === 'SILENT') {
+            if (Date.now() > (userStates[sender].blockedUntil || 0)) {
+                delete userStates[sender]; // 24h passed — treat as new user
+            } else {
+                return; // still blocked — no reply at all
+            }
+        }
+
         // Helper: send text to this sender
         const send = txt => sock.sendMessage(sender, { text: txt });
 
@@ -134,14 +143,17 @@ async function startBot() {
         // ── Global escape commands (work at any step) ────────────
         if (t === 'stop' || t === 'exit' || t === 'cancel') {
             delete userStates[sender];
-            await send('Okay, chat ended 👋\nType anything to start again.');
+            await send('Okay, see you! 👋');
             return;
         }
 
         if (t === 'restart' || t === 'start' || t === 'menu' ||
             t === 'hi' || t === 'hello' || t === 'hey') {
+            const savedName = userStates[sender]?.name || null;
             delete userStates[sender];
-            // fall through to new-user welcome below
+            if (savedName) {
+                userStates[sender] = { step: 'RETURNING', name: savedName };
+            }
         }
 
         if (t === 'help') {
@@ -156,12 +168,26 @@ async function startBot() {
             return;
         }
 
-        // ── New user or after restart ────────────────────────────
+        // ── New user ─────────────────────────────────────────────
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
             await send(
                 `👋 *Welcome!*\n\n` +
                 `How can we help you today?\n\n` +
+                `*1* — General 💬\n` +
+                `*2* — Panels 🎯\n` +
+                `*3* — Diamond Top-Up 💎\n\n` +
+                `_Reply with 1, 2, or 3_`
+            );
+            return;
+        }
+
+        // ── Returning user with saved name ───────────────────────
+        if (userStates[sender]?.step === 'RETURNING') {
+            const name = userStates[sender].name;
+            userStates[sender] = { step: 'PICK_CATEGORY', name };
+            await send(
+                `Hey *${name}*! 👋 Good to see you again.\n\n` +
                 `*1* — General 💬\n` +
                 `*2* — Panels 🎯\n` +
                 `*3* — Diamond Top-Up 💎\n\n` +
@@ -179,14 +205,17 @@ async function startBot() {
 
             // General
             if (t === '1' || t.includes('general')) {
-                userStates[sender] = { step: 'GENERAL' };
                 const settings = await fbGet('settings');
                 const owner = settings?.owner || 'the owner';
                 await send(
                     `Hey 👋 *${owner}* isn't available right now.\n\n` +
-                    `Your message has been noted — they'll get back to you soon ⏳\n\n` +
-                    `Want to buy something? Type *2* for Panels or *3* for Top-Up.`
+                    `Your message has been noted — they'll get back to you soon ⏳`
                 );
+                // Block for 24 hours — no replies at all
+                userStates[sender] = {
+                    step: 'SILENT',
+                    blockedUntil: Date.now() + 24 * 60 * 60 * 1000
+                };
                 return;
             }
 
@@ -226,42 +255,6 @@ async function startBot() {
             }
 
             await send(`Please reply with *1*, *2*, or *3* 😊`);
-            return;
-        }
-
-        // ════════════════════════════════════════════════════════
-        // GENERAL follow-up
-        // ════════════════════════════════════════════════════════
-        if (st.step === 'GENERAL') {
-            if (t === '3' || t.includes('topup') || t.includes('diamond') || t.includes('game')) {
-                delete userStates[sender];
-                const data = await fbGet('games');
-                const games = toArray(data);
-                userStates[sender] = { step: 'PICK_GAME', games };
-                await send(
-                    `💎 *Select a Game*\n\n` +
-                    numberedList(games, g => g.name) +
-                    `\n*${games.length + 1}.* Other / Custom Game\n\n` +
-                    `_Reply with the number_`
-                );
-                return;
-            }
-            if (t === '2' || t.includes('panel') || t.includes('service')) {
-                delete userStates[sender];
-                const data = await fbGet('services');
-                const services = toArray(data);
-                userStates[sender] = { step: 'PICK_SERVICE', services };
-                await send(
-                    `🎯 *Available Panels*\n\n` +
-                    numberedList(services, s => `*${s.name}* — ₹${s.price}\n   _${s.description || ''}_`) +
-                    `\n\n_Reply with the number_`
-                );
-                return;
-            }
-            await send(
-                `Got it 🙏 Your message has been noted.\n\n` +
-                `Type *2* for Panels, *3* for Top-Up, or *stop* to end.`
-            );
             return;
         }
 
@@ -391,7 +384,7 @@ async function startBot() {
         // ASK_NAME
         // ════════════════════════════════════════════════════════
         if (st.step === 'ASK_NAME') {
-            userStates[sender] = { ...st, step: 'ASK_PHONE', orderData: { ...st.orderData, name: rawText } };
+            userStates[sender] = { ...st, step: 'ASK_PHONE', name: rawText, orderData: { ...st.orderData, name: rawText } };
             await send(`Nice to meet you, *${rawText}*! 👋\n\nYour *phone number*? 📱`);
             return;
         }
@@ -476,6 +469,8 @@ async function startBot() {
 
             await delay(700);
             await send(`Need anything else?\n\n*restart* — New order\n*stop* — End chat`);
+            // Remember this user for next visit
+            userStates[sender] = { step: 'RETURNING', name: od.name };
             return;
         }
 
