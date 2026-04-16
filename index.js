@@ -278,7 +278,7 @@ async function startBot() {
         // typing indicator
         const send = async (text) => {
             await sock.sendPresenceUpdate('composing', sender);
-            await delay(800 + Math.random() * 600);
+            await delay(1200 + Math.random() * 1500); // feels like real typing
             await sock.sendPresenceUpdate('paused', sender);
             return sock.sendMessage(sender, { text });
         };
@@ -317,10 +317,10 @@ async function startBot() {
         // ── New user ──────────────────────────────────────────────
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
-            const menu = `*1* 💬 General — Talk to Susant directly\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🤖 Buy This Bot — Get your own WhatsApp bot like this`;
+            const menu = `*1* 💬 General — For regular messages\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🤖 Buy This Bot — Get your own WhatsApp bot like this`;
             const greeting = userData.name
                 ? `Hey ${userData.name}! Good to see you again 👋\n\nWhat can I help you with?\n\n${menu}`
-                : `Hey! Welcome to Game Panel 👋\n\nHere's what I can help you with:\n\n${menu}\n\nJust reply with a number 😊`;
+                : `👋 Welcome!\n\nPlease choose an option:\n\n${menu}\n\nReply with *1, 2, 3 or 4* 😊`;
             await send(greeting);
             return;
         }
@@ -339,8 +339,8 @@ async function startBot() {
         if (st.step === 'PICK_CATEGORY') {
             if (t === '1' || t.includes('general')) {
                 const settings = await fbGet('settings');
-                const owner = settings?.owner || 'the owner';
-                await send(`Hey so ${owner} is not available right now but your message has been noted. They will get back to you soon 🙏\n\n_Type *menu* anytime if you want to check panels or top-up while you wait_ 😊`);
+                const owner = settings?.owner || 'Susant';
+                await send(`Hey 👋 the owner isn't available right now.\nYour message has been noted — they'll get back to you soon 🙏`);
                 userStates[sender] = { step: 'SILENT', blockedUntil: Date.now() + 24 * 60 * 60 * 1000 };
                 return;
             }
