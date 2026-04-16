@@ -318,6 +318,10 @@ async function startBot() {
             return;
         }
 
+        // ── Load persistent user data ─────────────────────────────
+        const userData = await getUser(waNum);
+        const userName = userStates[sender]?.name || userData.name || null;
+
         // ── Global AI for questions (anytime, any step) ───────────
         const orderSteps = ['ASK_NAME','ASK_PHONE','ASK_UID','SEND_PAYMENT','ASK_GAME_PHONE'];
         const isMenuInput = /^[1-5]$/.test(t) || ['stop','exit','cancel','restart','start','hi','hello','hey','menu','help'].includes(t);
@@ -360,10 +364,6 @@ async function startBot() {
                 return;
             }
         }
-
-        // ── Load persistent user data ─────────────────────────────
-        const userData = await getUser(waNum);
-        const userName = userStates[sender]?.name || userData.name || null;
 
         // ── New user ──────────────────────────────────────────────
         if (!userStates[sender]) {
