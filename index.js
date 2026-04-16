@@ -319,29 +319,26 @@ async function startBot() {
         }
 
         // ── Global AI for questions (anytime, any step) ───────────
-        const isQuestion = t.includes('what') || t.includes('how') || t.includes('kya') || t.includes('ke ho') ||
-                           t.includes('bhane') || t.includes('panel') || t.includes('hack') || t.includes('cheat') ||
-                           t.includes('work') || t.includes('safe') || t.includes('antiban') || t.includes('price') ||
-                           t.includes('cost') || t.includes('explain') || t.includes('tell me') || t.includes('?');
         const orderSteps = ['ASK_NAME','ASK_PHONE','ASK_UID','SEND_PAYMENT','ASK_GAME_PHONE'];
-        if (isQuestion && GEMINI_KEY && !orderSteps.includes(userStates[sender]?.step)) {
+        const isMenuInput = /^[1-5]$/.test(t) || ['stop','exit','cancel','restart','start','hi','hello','hey','menu','help'].includes(t);
+        const curStep = userStates[sender]?.step;
+        // trigger AI for anything that's not a plain menu number and not in a data-entry step
+        if (GEMINI_KEY && !isMenuInput && !orderSteps.includes(curStep) && rawText.length > 1) {
             const ctx = await buildBusinessContext();
             const aiReply = await askGemini(rawText, ctx, userName);
             if (aiReply) {
+                const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
+                await send(clean);
                 if (aiReply.includes('[ORDER_INTENT]')) {
-                    const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
-                    if (clean) await send(clean);
                     await delay(500);
                     userStates[sender] = { step: 'PICK_CATEGORY', name: userName };
-                    await send(`What do you want to order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
+                    await send(`What do you want to order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot\n*5* ❓ Ask a Question`);
                 } else {
-                    await send(aiReply);
                     // if mid-order, remind them where they were
                     const midSteps = ['PICK_SERVICE','PICK_GAME','PICK_PACKAGE','PICK_SERVICE_PKG','ASK_DURATION'];
-                    const curStep = userStates[sender]?.step;
                     if (midSteps.includes(curStep)) {
                         await delay(500);
-                        if (curStep === 'PICK_SERVICE' || curStep === 'PICK_SERVICE_PKG' || curStep === 'ASK_DURATION') {
+                        if (curStep === 'PICK_SERVICE') {
                             const list = userStates[sender].services?.map((s,i) => `*${i+1}.* ${s.name}`).join('\n') || '';
                             if (list) await send(`Anyway, you were picking a panel 👆\n\n${list}\n\nReply with the number to continue`);
                         } else if (curStep === 'PICK_GAME') {
@@ -350,7 +347,14 @@ async function startBot() {
                         } else if (curStep === 'PICK_PACKAGE') {
                             const list = userStates[sender].packages?.map((p,i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n') || '';
                             if (list) await send(`Anyway, you were picking a package 👆\n\n${list}\n\nReply with the number to continue`);
+                        } else if (curStep === 'ASK_DURATION' || curStep === 'PICK_SERVICE_PKG') {
+                            const pkgs = userStates[sender].packages || userStates[sender].durationPkgs || [];
+                            const list = pkgs.map((p,i) => `*D${i+1}* — ${p.label} · ₹${p.price}`).join('\n');
+                            if (list) await send(`Anyway, choose your package 👆\n\n${list}`);
                         }
+                    } else if (curStep === 'PICK_CATEGORY') {
+                        await delay(400);
+                        await send(`Type *menu* to see all options or reply with *1-5* 😊`);
                     }
                 }
                 return;
@@ -384,7 +388,7 @@ async function startBot() {
 
         // ── PICK_CATEGORY ─────────────────────────────────────────
         if (st.step === 'PICK_CATEGORY') {
-            if (t === '1' || t.includes('general')) {
+            if (t === '1' || t === 'general') {
                 const settings = await fbGet('settings');
                 const owner = settings?.owner || 'Susant';
                 await send(`Hey 👋 the owner isn't available right now.\nYour message has been noted — they'll get back to you soon 🙏`);
@@ -454,7 +458,7 @@ async function startBot() {
                 await send(`Which game do you want to top-up? 💎\n\n${list}\n*${games.length+1}.* Other game\n\nReply with the number`);
                 return;
             }
-            // unknown — try AI
+            // unknown input — try AI first, always
             if (GEMINI_KEY) {
                 const ctx = await buildBusinessContext();
                 const aiReply = await askGemini(rawText, ctx, userName);
@@ -463,14 +467,16 @@ async function startBot() {
                         const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
                         if (clean) await send(clean);
                         await delay(500);
-                        await send(`So what do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`);
+                        await send(`What do you want to order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot\n*5* ❓ Ask a Question`);
                     } else {
                         await send(aiReply);
+                        await delay(400);
+                        await send(`Type *menu* anytime to see all options 😊`);
                     }
                     return;
                 }
             }
-            await send(`Just reply with 1, 2 or 3 😊`);
+            await send(`Reply with *1, 2, 3, 4 or 5* 😊\n\nOr type *menu* to see options`);
             return;
         }
 
