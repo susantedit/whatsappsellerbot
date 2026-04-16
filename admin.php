@@ -575,8 +575,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                         <input type="text" id="settingUpi" placeholder="yourname@upi" style="width:100%;padding:14px;border:1px solid var(--border);border-radius:12px;font-size:1rem;box-sizing:border-box;">
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="font-weight:700;display:block;margin-bottom:8px;">QR Code Image URL <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
-                        <input type="text" id="settingQr" placeholder="https://..." style="width:100%;padding:14px;border:1px solid var(--border);border-radius:12px;font-size:1rem;box-sizing:border-box;">
+                        <label style="font-weight:700;display:block;margin-bottom:8px;">Payment QR Image</label>
+                        <div id="qrPreviewWrap" style="display:none;margin-bottom:10px;">
+                            <img id="qrPreview" src="" style="width:160px;height:160px;object-fit:contain;border-radius:12px;border:2px solid var(--primary);">
+                        </div>
+                        <input type="file" id="qrFileInput" accept="image/*" style="display:none;">
+                        <button type="button" class="btn-add" id="qrUploadBtn" style="background:#3b82f6;margin-bottom:8px;">
+                            <i class="fas fa-upload"></i> Upload QR Image
+                        </button>
+                        <p id="qrUploadStatus" style="font-size:0.85rem;color:var(--text-muted);margin:0;"></p>
                     </div>
                     <button class="btn-add" id="saveSettingsBtn" style="width:100%;justify-content:center;">Save Settings</button>
                     <p id="settingsSaved" style="color:var(--primary);font-weight:700;margin-top:12px;display:none;">✅ Saved!</p>
@@ -623,13 +630,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
 
     <script>
         const firebaseConfig = <?php echo json_encode($firebaseConfig); ?>;
         firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db   = firebase.database();
-        const $    = id => document.getElementById(id);
+        const auth    = firebase.auth();
+        const db      = firebase.database();
+        const storage = firebase.storage();
+        const $       = id => document.getElementById(id);
 
         // ── Navigation ──────────────────────────────────────────
         document.querySelectorAll('.nav-item:not(.logout-btn)').forEach(item => {
@@ -930,15 +939,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                 const s = snap.val() || {};
                 $('settingOwner').value = s.owner || '';
                 $('settingUpi').value   = s.upi   || '';
-                $('settingQr').value    = s.qr_image_url || '';
+                if (s.qr_image_url) {
+                    $('qrPreview').src = s.qr_image_url;
+                    $('qrPreviewWrap').style.display = 'block';
+                }
             });
         }
+
+        // ── QR image upload to Firebase Storage ─────────────────
+        $('qrUploadBtn').onclick = () => $('qrFileInput').click();
+        $('qrFileInput').onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                $('qrUploadStatus').textContent = 'Please select an image file.';
+                return;
+            }
+            if (file.size > 2 * 1024 * 1024) {
+                $('qrUploadStatus').textContent = 'Image must be under 2MB.';
+                return;
+            }
+            $('qrUploadStatus').textContent = 'Uploading...';
+            $('qrUploadBtn').disabled = true;
+            try {
+                const ref = storage.ref('qr/payment_qr.jpg');
+                await ref.put(file);
+                const url = await ref.getDownloadURL();
+                const s = (await db.ref('settings').once('value')).val() || {};
+                await db.ref('settings').update({ ...s, qr_image_url: url });
+                $('qrPreview').src = url;
+                $('qrPreviewWrap').style.display = 'block';
+                $('qrUploadStatus').textContent = '✅ Uploaded and saved!';
+            } catch (err) {
+                $('qrUploadStatus').textContent = 'Upload failed. Check Firebase Storage rules.';
+                console.error(err);
+            }
+            $('qrUploadBtn').disabled = false;
+        };
+
         $('saveSettingsBtn').onclick = () => {
-            const owner        = sanitize($('settingOwner').value);
-            const upi          = sanitize($('settingUpi').value);
-            const qr_image_url = sanitize($('settingQr').value);
+            const owner = sanitize($('settingOwner').value);
+            const upi   = sanitize($('settingUpi').value);
             if (!owner) return;
-            db.ref('settings').set({ owner, upi, qr_image_url }).then(() => {
+            db.ref('settings').update({ owner, upi }).then(() => {
                 $('settingsSaved').style.display = 'block';
                 setTimeout(() => $('settingsSaved').style.display = 'none', 2000);
             });
@@ -973,337 +1016,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             <button class="btn-add" id="saveTopupBtn" style="width:100%;justify-content:center;">Save Package</button>
         </div>
     </div>
-
-    <!-- MODAL: ADD DISH -->
-    <div id="dishModal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2 style="margin-bottom: 25px;">New Dish</h2>
-            <input type="text" id="dishName" placeholder="Dish Name" class="login-box" style="box-shadow: none; padding: 12px; margin-bottom: 10px;">
-            <input type="number" id="dishPrice" placeholder="Price (₹)" class="login-box" style="box-shadow: none; padding: 12px; margin-bottom: 10px;">
-            <input type="text" id="dishImage" placeholder="Image URL" class="login-box" style="box-shadow: none; padding: 12px; margin-bottom: 20px;">
-            <button class="btn-add" id="saveDishBtn" style="width: 100%; justify-content: center;">Save Item</button>
-        </div>
-    </div>
-
-    <!-- MODAL: ADD RESTAURANT -->
-    <div id="restModal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2 style="margin-bottom: 25px;">New Restaurant</h2>
-            <input type="text" id="restName" placeholder="Name" class="login-box" style="box-shadow: none; padding: 12px; margin-bottom: 10px;">
-            <input type="number" step="0.1" id="restRating" placeholder="Rating (1-5)" class="login-box" style="box-shadow: none; padding: 12px; margin-bottom: 10px;">
-            <input type="text" id="restImage" placeholder="Image URL" class="login-box" style="box-shadow: none; padding: 12px; margin-bottom: 20px;">
-            <button class="btn-add" id="saveRestBtn" style="width: 100%; justify-content: center;">Add Partner</button>
-        </div>
-    </div>
-
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-
-    <script>
-        const firebaseConfig = <?php echo json_encode($firebaseConfig); ?>;
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.database();
-
-        // UI Helpers
-        const $ = (id) => document.getElementById(id);
-        
-        // Navigation Logic
-        const navItems = document.querySelectorAll('.nav-item:not(.logout-btn)');
-        const sections = document.querySelectorAll('.section');
-
-        navItems.forEach(item => {
-            item.addEventListener('click', () => {
-                navItems.forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                sections.forEach(s => s.classList.remove('active'));
-                $(item.dataset.target).classList.add('active');
-                if(window.innerWidth < 992) $('sidebar').classList.remove('active');
-            });
-        });
-
-        $('menuToggle').onclick = () => $('sidebar').classList.toggle('active');
-
-        // Auth Logic
-        auth.onAuthStateChanged(user => {
-            if (user) {
-                $('authOverlay').style.display = 'none';
-                $('userEmailDisplay').textContent = user.email;
-                initData();
-            } else {
-                $('authOverlay').style.display = 'flex';
-            }
-        });
-
-        $('loginBtn').onclick = () => {
-            const email = $('adminEmail').value;
-            const pass = $('adminPassword').value;
-            auth.signInWithEmailAndPassword(email, pass).catch(e => $('authError').textContent = e.message);
-        };
-
-        $('logoutBtn').onclick = () => auth.signOut();
-
-        function initData() {
-            loadOrders();
-            loadDishes();
-            loadRestaurants();
-            loadHackPanels();
-            loadTopupPackages();
-            loadWAOrders();
-            loadSettings();
-        }
-
-        // 1. ORDERS REWRITE
-        function loadOrders() {
-            db.ref('orders').on('value', snapshot => {
-                const container = $('ordersTableBody');
-                container.innerHTML = '';
-                let revenue = 0, count = 0;
-
-                const orders = [];
-                snapshot.forEach(child => { orders.push({id: child.key, ...child.val()}); });
-                orders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-                orders.forEach(order => {
-                    revenue += parseFloat(order.total || 0);
-                    count++;
-                    const itemsText = order.items ? order.items.map(i => `${i.quantity}x ${i.name}`).join(', ') : 'Empty Order';
-                    
-                    const status = order.status || 'Placed';
-                    const statusClass = status.toLowerCase().includes('delivery') ? 'status-delivery' : 
-                                       status.toLowerCase().includes('prep') ? 'status-preparing' :
-                                       status.toLowerCase().includes('deliv') ? 'status-delivered' : 'status-placed';
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td data-label="Order ID" style="font-family:monospace; font-weight:700;">#${order.id.substring(1,7).toUpperCase()}</td>
-                        <td data-label="Customer">
-                            <div class="customer-info">
-                                <span class="name">${order.userEmail || 'Guest'}</span>
-                                <span class="phone">${order.phone || 'No Phone'}</span>
-                            </div>
-                        </td>
-                        <td data-label="Items">
-                            <div class="item-list">${itemsText}</div>
-                        </td>
-                        <td data-label="Total" style="font-weight:800; color:var(--primary-dark)">₹${order.total}</td>
-                        <td data-label="Status">
-                            <select class="status-select ${statusClass}" onchange="updateOrderStatus('${order.id}', this.value)">
-                                <option value="Placed" ${status === 'Placed' ? 'selected' : ''}>Placed</option>
-                                <option value="Preparing" ${status === 'Preparing' ? 'selected' : ''}>Preparing</option>
-                                <option value="Out for Delivery" ${status === 'Out for Delivery' ? 'selected' : ''}>Out for Delivery</option>
-                                <option value="Delivered" ${status === 'Delivered' ? 'selected' : ''}>Delivered</option>
-                            </select>
-                        </td>
-                    `;
-                    container.appendChild(tr);
-                });
-                $('stat-revenue').textContent = '₹' + revenue.toLocaleString();
-                $('stat-orders').textContent = count;
-            });
-        }
-
-        window.updateOrderStatus = (id, val) => {
-            db.ref('orders/' + id).update({ status: val });
-        };
-
-        // 2. DISHES REWRITE
-        function loadDishes() {
-            db.ref('dishes').on('value', snap => {
-                const grid = $('dishesGrid');
-                grid.innerHTML = '';
-                let c = 0;
-                snap.forEach(child => {
-                    c++;
-                    const item = child.val();
-                    grid.innerHTML += `
-                        <div class="admin-card">
-                            <button class="delete-btn" onclick="deleteItem('dishes','${child.key}')"><i class="fas fa-trash"></i></button>
-                            <img src="${item.imageUrl}">
-                            <div class="admin-card-body">
-                                <h4>${item.name}</h4>
-                                <span style="font-weight:800; color:var(--primary)">₹${item.price}</span>
-                            </div>
-                        </div>
-                    `;
-                });
-                $('stat-dishes').textContent = c;
-            });
-        }
-
-        // 3. RESTAURANTS
-        function loadRestaurants() {
-            db.ref('restaurants').on('value', snap => {
-                const grid = $('restaurantsGrid');
-                grid.innerHTML = '';
-                snap.forEach(child => {
-                    const item = child.val();
-                    grid.innerHTML += `
-                        <div class="admin-card">
-                            <button class="delete-btn" onclick="deleteItem('restaurants','${child.key}')"><i class="fas fa-trash"></i></button>
-                            <img src="${item.imageUrl}">
-                            <div class="admin-card-body">
-                                <h4>${item.name}</h4>
-                                <span style="font-size:0.9rem; font-weight:600;"><i class="fas fa-star" style="color:#f59e0b"></i> ${item.rating}</span>
-                            </div>
-                        </div>
-                    `;
-                });
-            });
-        }
-
-        // CRUD Operations
-        window.deleteItem = (path, id) => {
-            if(confirm('Delete this item permanently?')) db.ref(`${path}/${id}`).remove();
-        };
-
-        // Modals
-        const dishM = $('dishModal'), restM = $('restModal');
-        $('openDishModal').onclick = () => dishM.style.display = 'flex';
-        $('openRestModal').onclick = () => restM.style.display = 'flex';
-
-        $('saveDishBtn').onclick = () => {
-            const name = $('dishName').value, price = $('dishPrice').value, imageUrl = $('dishImage').value;
-            if(name && price && imageUrl) {
-                db.ref('dishes').push({name, price, imageUrl}).then(() => {
-                    dishM.style.display = 'none';
-                    $('dishName').value = ''; $('dishPrice').value = ''; $('dishImage').value = '';
-                });
-            }
-        };
-
-        $('saveRestBtn').onclick = () => {
-            const name = $('restName').value, rating = $('restRating').value, imageUrl = $('restImage').value;
-            if(name && rating && imageUrl) {
-                db.ref('restaurants').push({name, rating, imageUrl}).then(() => {
-                    restM.style.display = 'none';
-                    $('restName').value = ''; $('restRating').value = ''; $('restImage').value = '';
-                });
-            }
-        };
-
-        // ── HACK PANELS ──
-        function loadHackPanels() {
-            db.ref('hack_panels').on('value', snap => {
-                const grid = $('panelsGrid');
-                grid.innerHTML = '';
-                snap.forEach(child => {
-                    const p = child.val();
-                    grid.innerHTML += `
-                        <div class="admin-card" style="padding:20px;">
-                            <button class="delete-btn" onclick="deleteItem('hack_panels','${child.key}')"><i class="fas fa-trash"></i></button>
-                            <div style="font-size:2rem;margin-bottom:10px;">🎯</div>
-                            <h4 style="margin:0 0 5px;">${p.name}</h4>
-                            <p style="margin:0 0 5px;color:var(--text-muted);font-size:0.85rem;">${p.description || ''}</p>
-                            <span style="font-weight:800;color:var(--primary)">₹${p.price}</span>
-                        </div>`;
-                });
-            });
-        }
-
-        const panelM = $('panelModal');
-        $('openPanelModal').onclick = () => panelM.style.display = 'flex';
-        $('savePanelBtn').onclick = () => {
-            const name = $('panelName').value, price = $('panelPrice').value, description = $('panelDesc').value;
-            if(name && price) {
-                db.ref('hack_panels').push({name, price, description}).then(() => {
-                    panelM.style.display = 'none';
-                    $('panelName').value = ''; $('panelPrice').value = ''; $('panelDesc').value = '';
-                });
-            }
-        };
-
-        // ── DIAMOND TOP-UP ──
-        function loadTopupPackages() {
-            db.ref('topup_packages').on('value', snap => {
-                const grid = $('topupGrid');
-                grid.innerHTML = '';
-                snap.forEach(child => {
-                    const p = child.val();
-                    grid.innerHTML += `
-                        <div class="admin-card" style="padding:20px;">
-                            <button class="delete-btn" onclick="deleteItem('topup_packages','${child.key}')"><i class="fas fa-trash"></i></button>
-                            <div style="font-size:2rem;margin-bottom:10px;">💎</div>
-                            <h4 style="margin:0 0 5px;">${p.diamonds} Diamonds</h4>
-                            <span style="font-weight:800;color:var(--primary)">₹${p.price}</span>
-                        </div>`;
-                });
-            });
-        }
-
-        const topupM = $('topupModal');
-        $('openTopupModal').onclick = () => topupM.style.display = 'flex';
-        $('saveTopupBtn').onclick = () => {
-            const diamonds = $('topupDiamonds').value, price = $('topupPrice').value;
-            if(diamonds && price) {
-                db.ref('topup_packages').push({diamonds, price}).then(() => {
-                    topupM.style.display = 'none';
-                    $('topupDiamonds').value = ''; $('topupPrice').value = '';
-                });
-            }
-        };
-
-        // ── WHATSAPP ORDERS ──
-        function loadWAOrders() {
-            db.ref('orders').on('value', snap => {
-                const body = $('waOrdersBody');
-                body.innerHTML = '';
-                const all = [];
-                snap.forEach(c => all.push({id: c.key, ...c.val()}));
-                // only WA orders
-                all.filter(o => o.type === 'hack_panel' || o.type === 'diamond_topup')
-                   .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
-                   .forEach(o => {
-                        const typeLabel = o.type === 'hack_panel' ? '🎯 Panel' : '💎 Top-up';
-                        const itemLabel = o.type === 'hack_panel' ? o.item : `${o.diamonds} Diamonds`;
-                        const status = o.status || 'Pending';
-                        const statusColor = status === 'Completed' ? 'status-delivered' : status === 'Pending' ? 'status-placed' : 'status-preparing';
-                        body.innerHTML += `
-                            <tr>
-                                <td data-label="Type">${typeLabel}</td>
-                                <td data-label="Item" style="font-weight:700;">${itemLabel}</td>
-                                <td data-label="UID" style="font-family:monospace;">${o.uid || '-'}</td>
-                                <td data-label="WA">${o.waNumber || '-'}</td>
-                                <td data-label="Amount" style="font-weight:800;color:var(--primary-dark)">₹${o.price}</td>
-                                <td data-label="Status">
-                                    <select class="status-select ${statusColor}" onchange="updateOrderStatus('${o.id}', this.value)">
-                                        <option value="Pending" ${status==='Pending'?'selected':''}>Pending</option>
-                                        <option value="Processing" ${status==='Processing'?'selected':''}>Processing</option>
-                                        <option value="Completed" ${status==='Completed'?'selected':''}>Completed</option>
-                                    </select>
-                                </td>
-                            </tr>`;
-                   });
-            });
-        }
-
-        // ── SETTINGS ──
-        function loadSettings() {
-            db.ref('settings').once('value', snap => {
-                const s = snap.val() || {};
-                $('settingOwner').value = s.owner || '';
-                $('settingUpi').value = s.upi || '';
-            });
-        }
-
-        $('saveSettingsBtn').onclick = () => {
-            const owner = $('settingOwner').value, upi = $('settingUpi').value;
-            db.ref('settings').set({owner, upi}).then(() => {
-                $('settingsSaved').style.display = 'block';
-                setTimeout(() => $('settingsSaved').style.display = 'none', 2000);
-            });
-        };
-
-        // close all modals
-        document.querySelectorAll('.close-modal').forEach(b => {
-            b.onclick = () => {
-                document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
-            }
-        });
-
-    </script>
 </body>
 </html>

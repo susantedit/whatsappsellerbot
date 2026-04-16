@@ -418,7 +418,17 @@ async function startBot() {
             if (qrUrl) {
                 await sock.sendMessage(sender, { image: { url: qrUrl }, caption: paymentMsg });
             } else {
-                await send(paymentMsg);
+                // Fallback: use local payment.jpeg from project folder
+                const fs = require('fs');
+                const qrPath = './payment.jpeg';
+                if (fs.existsSync(qrPath)) {
+                    await sock.sendMessage(sender, {
+                        image: fs.readFileSync(qrPath),
+                        caption: paymentMsg
+                    });
+                } else {
+                    await send(paymentMsg);
+                }
             }
 
             await delay(600);
