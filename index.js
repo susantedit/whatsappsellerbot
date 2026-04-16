@@ -185,7 +185,14 @@ async function buildBusinessContext() {
     }
     if (services) {
         ctx += `\nPANELS AND SERVICES:\n`;
-        Object.values(services).forEach(s => { ctx += `${s.name}: Rs.${s.price}${s.description ? ' (' + s.description + ')' : ''}\n`; });
+        Object.values(services).forEach(s => {
+            ctx += `${s.name}${s.description ? ' (' + s.description + ')' : ''}:\n`;
+            if (s.packages) {
+                Object.values(s.packages).forEach(p => { ctx += `  ${p.label} = Rs.${p.price}\n`; });
+            } else if (s.price) {
+                ctx += `  Price = Rs.${s.price}\n`;
+            }
+        });
     }
     return ctx;
 }
@@ -200,8 +207,9 @@ async function askGemini(userMessage, ctx, userName) {
             `VERY IMPORTANT: Reply in the EXACT same language the user writes. ` +
             `If they write in Nepali, reply in Nepali. If Hindi, reply in Hindi. If Hinglish, reply in Hinglish. If English, reply in English. ` +
             `Match their tone and language perfectly like a local friend would. ` +
-            `Keep replies conversational, 2 to 4 sentences max. ` +
-            `Never use bullet points, dashes, or lists in your reply. Just talk naturally like texting. ` +
+            `PRICE RULE — VERY IMPORTANT: If user asks about price or packages of any panel or game, ` +
+            `you MUST list ALL available durations and their prices from the catalog below. ` +
+            `Do not pick just one price. Show every option like: 1 Day - Rs.X, 3 Days - Rs.Y, 7 Days - Rs.Z etc. ` +
             `Never make up prices, only use what is in the catalog below. ` +
             `If the user wants to buy or order something, end your reply with exactly: [ORDER_INTENT] ` +
             `If the user asks about something not in your catalog, say you don't have it right now. ` +
@@ -222,7 +230,7 @@ async function askGemini(userMessage, ctx, userName) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { maxOutputTokens: 200, temperature: 0.85 }
+                    generationConfig: { maxOutputTokens: 400, temperature: 0.75 }
                 })
             }
         );
@@ -308,6 +316,30 @@ async function startBot() {
         if (t === 'help') {
             await send(`You can reply with 1 for General, 2 for Panels, 3 for Diamond Top-Up or 4 to Buy This Bot. Type restart anytime to start over or stop to end the chat.`);
             return;
+        }
+
+        // ── Global AI for questions (anytime, any step) ───────────
+        const isQuestion = t.includes('what') || t.includes('how') || t.includes('kya') || t.includes('ke ho') ||
+                           t.includes('bhane') || t.includes('panel') || t.includes('hack') || t.includes('cheat') ||
+                           t.includes('work') || t.includes('safe') || t.includes('antiban') || t.includes('price') ||
+                           t.includes('cost') || t.includes('explain') || t.includes('tell me') || t.includes('?');
+        if (isQuestion && GEMINI_KEY && userStates[sender]?.step !== 'ASK_NAME' &&
+            userStates[sender]?.step !== 'ASK_PHONE' && userStates[sender]?.step !== 'ASK_UID' &&
+            userStates[sender]?.step !== 'SEND_PAYMENT' && userStates[sender]?.step !== 'ASK_GAME_PHONE') {
+            const ctx = await buildBusinessContext();
+            const aiReply = await askGemini(rawText, ctx, userName);
+            if (aiReply) {
+                if (aiReply.includes('[ORDER_INTENT]')) {
+                    const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
+                    if (clean) await send(clean);
+                    await delay(500);
+                    userStates[sender] = { step: 'PICK_CATEGORY', name: userName };
+                    await send(`What do you want to order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
+                } else {
+                    await send(aiReply);
+                }
+                return;
+            }
         }
 
         // ── Load persistent user data ─────────────────────────────
@@ -499,7 +531,18 @@ async function startBot() {
                 await send(`${picked.name} 🎯\n\n${list}\n\nWhich package do you want?`);
             } else {
                 userStates[sender] = { ...st, step: 'ASK_DURATION', service: picked };
-                await send(`${picked.name} 🎯\n\nHow many days?\n\n*D1* — 1 Day\n*D2* — 3 Days\n*D3* — 7 Days\n*D4* — 15 Days\n*D5* — 30 Days\n\nReply with D1, D2, D3, D4 or D5`);
+                // build duration list with prices if available
+                const pkgList = picked.packages ? Object.values(picked.packages) : [];
+                let durationMsg;
+                if (pkgList.length) {
+                    const opts = pkgList.map((p, i) => `*D${i+1}* — ${p.label} · ₹${p.price}`).join('\n');
+                    // store packages in state so we can look up price by D-index
+                    userStates[sender] = { ...st, step: 'ASK_DURATION', service: picked, durationPkgs: pkgList };
+                    durationMsg = `${picked.name} 🎯\n\nChoose duration:\n\n${opts}\n\nReply with D1, D2, D3...`;
+                } else {
+                    durationMsg = `${picked.name} 🎯\n\nHow many days?\n\n*D1* — 1 Day\n*D2* — 3 Days\n*D3* — 7 Days\n*D4* — 15 Days\n*D5* — 30 Days\n\nReply with D1, D2, D3, D4 or D5`;
+                }
+                await send(durationMsg);
             }
             return;
         }
@@ -519,6 +562,21 @@ async function startBot() {
 
         // ── ASK_DURATION ──────────────────────────────────────────
         if (st.step === 'ASK_DURATION') {
+            // if we have actual packages with prices, match by D-index
+            if (st.durationPkgs && st.durationPkgs.length) {
+                const match = t.match(/^d(\d+)$/);
+                const idx = match ? parseInt(match[1]) - 1 : null;
+                if (idx === null || idx < 0 || idx >= st.durationPkgs.length) {
+                    const opts = st.durationPkgs.map((p, i) => `*D${i+1}* — ${p.label} · ₹${p.price}`).join('\n');
+                    await send(`Please reply with:\n\n${opts}`);
+                    return;
+                }
+                const pkg = st.durationPkgs[idx];
+                userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} — ${pkg.label}`, price: pkg.price } };
+                await send(`${st.service.name} — ${pkg.label} for ₹${pkg.price} ✅\n\nWhat's your name?`);
+                return;
+            }
+            // fallback — no packages, use generic durations
             const durationMap = {
                 'd1': '1 Day',  '1 day': '1 Day',  '1': '1 Day',
                 'd2': '3 Days', '3 days': '3 Days', '3': '3 Days',
