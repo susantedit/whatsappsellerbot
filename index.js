@@ -66,19 +66,85 @@ async function sendOrderEmail(order) {
             service: 'gmail',
             auth: { user: SMTP_USER, pass: SMTP_PASS }
         });
-        const subject = `🛒 New Order — ${order.name || 'Unknown'} — ₹${order.price}`;
-        const body = `
-New order received on your WhatsApp bot!
 
-Name:    ${order.name || '-'}
-Phone:   ${order.phone || '-'}
-WA:      ${order.waNumber || '-'}
-Type:    ${order.type}
-${order.game ? `Game:    ${order.game}\nPackage: ${order.package}\nUID:     ${order.uid || '-'}` : `Service: ${order.item}`}
-Amount:  ₹${order.price}
-Time:    ${order.timestamp}
-        `.trim();
-        await transporter.sendMail({ from: SMTP_USER, to: NOTIFY_EMAIL, subject, text: body });
+        const typeLabel = order.type === 'topup'        ? '🎮 Game Top-Up'
+                        : order.type === 'service'      ? '🎯 Panel / Service'
+                        : order.type === 'bot_setup'    ? '🤖 Bot Setup'
+                        : '📩 Custom Request';
+
+        const detailRows = order.type === 'topup'
+            ? `<tr><td>Game</td><td><b>${order.game}</b></td></tr>
+               <tr><td>Package</td><td><b>${order.package}</b></td></tr>
+               <tr><td>UID</td><td><b>${order.uid || '-'}</b></td></tr>`
+            : `<tr><td>Item</td><td><b>${order.item || order.message || '-'}</b></td></tr>`;
+
+        const subject = `🛒 New Order — ${order.name || order.waNumber} — ₹${order.price}`;
+
+        const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#0a0a0a;font-family:Arial,sans-serif;">
+  <div style="max-width:560px;margin:30px auto;background:#111;border-radius:12px;overflow:hidden;border:1px solid #2a2a2a;">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1a0000,#0d0d0d);padding:28px 32px;border-bottom:2px solid #e63946;">
+      <div style="font-size:1.4rem;font-weight:900;color:#e63946;letter-spacing:3px;">⚔️ GAME PANEL</div>
+      <div style="color:#888;font-size:0.85rem;margin-top:4px;letter-spacing:1px;">NEW ORDER RECEIVED</div>
+    </div>
+
+    <!-- Type badge -->
+    <div style="padding:20px 32px 0;">
+      <span style="background:rgba(230,57,70,0.15);color:#e63946;border:1px solid rgba(230,57,70,0.4);padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:700;letter-spacing:1px;">${typeLabel}</span>
+    </div>
+
+    <!-- Order details table -->
+    <div style="padding:20px 32px;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.95rem;">
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:10px 0;color:#888;width:40%;">Customer</td>
+          <td style="padding:10px 0;color:#fff;font-weight:700;">${order.name || '-'}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:10px 0;color:#888;">Phone</td>
+          <td style="padding:10px 0;color:#fff;font-weight:700;">${order.phone || '-'}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:10px 0;color:#888;">WhatsApp</td>
+          <td style="padding:10px 0;color:#fff;font-weight:700;">${order.waNumber || '-'}</td>
+        </tr>
+        ${detailRows}
+        <tr style="border-bottom:1px solid #222;">
+          <td style="padding:10px 0;color:#888;">Amount</td>
+          <td style="padding:10px 0;font-size:1.2rem;font-weight:900;color:#e63946;">₹${order.price}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0;color:#888;">Time</td>
+          <td style="padding:10px 0;color:#fff;">${new Date(order.timestamp).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- CTA -->
+    <div style="padding:0 32px 28px;">
+      <a href="https://whatsapp.com/send?phone=${order.waNumber}" style="display:inline-block;background:#25d366;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem;letter-spacing:1px;">💬 Reply on WhatsApp</a>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#0d0d0d;padding:16px 32px;border-top:1px solid #1a1a1a;text-align:center;color:#444;font-size:0.78rem;letter-spacing:1px;">
+      Game Panel Bot · Auto-notification · Do not reply to this email
+    </div>
+
+  </div>
+</body>
+</html>`;
+
+        await transporter.sendMail({
+            from: `"Game Panel Bot" <${SMTP_USER}>`,
+            to: NOTIFY_EMAIL,
+            subject,
+            html
+        });
         console.log('[EMAIL] Order notification sent');
     } catch (e) { console.error('[EMAIL] Failed:', e.message); }
 }
@@ -217,10 +283,15 @@ async function startBot() {
             return sock.sendMessage(sender, { text });
         };
 
-        // ── Silent (General) — blocked 24h ───────────────────────
+        // ── Silent (General) — blocked, but allow menu/restart to escape ──
         if (userStates[sender]?.step === 'SILENT') {
-            if (Date.now() > (userStates[sender].blockedUntil || 0)) delete userStates[sender];
-            else return;
+            if (Date.now() > (userStates[sender].blockedUntil || 0)) {
+                delete userStates[sender]; // expired — fall through normally
+            } else if (t === 'menu' || t === 'start' || t === 'restart' || t === 'hi' || t === 'hello' || t === 'hey') {
+                delete userStates[sender]; // user wants out — let them back in
+            } else {
+                return; // still blocked, ignore
+            }
         }
 
         // ── Global commands ───────────────────────────────────────
@@ -246,9 +317,10 @@ async function startBot() {
         // ── New user ──────────────────────────────────────────────
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
+            const menu = `*1* 💬 General — Talk to Susant directly\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🤖 Buy This Bot — Get your own WhatsApp bot like this`;
             const greeting = userData.name
-                ? `Hey ${userData.name}! Good to see you again 👋 What can I help you with today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`
-                : `Hey! Welcome 👋 What brings you here today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`;
+                ? `Hey ${userData.name}! Good to see you again 👋\n\nWhat can I help you with?\n\n${menu}`
+                : `Hey! Welcome to Game Panel 👋\n\nHere's what I can help you with:\n\n${menu}\n\nJust reply with a number 😊`;
             await send(greeting);
             return;
         }
@@ -257,7 +329,7 @@ async function startBot() {
         if (userStates[sender]?.step === 'RETURNING') {
             const name = userStates[sender].name || userData.name;
             userStates[sender] = { step: 'PICK_CATEGORY', name };
-            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`);
+            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
             return;
         }
 
@@ -268,7 +340,7 @@ async function startBot() {
             if (t === '1' || t.includes('general')) {
                 const settings = await fbGet('settings');
                 const owner = settings?.owner || 'the owner';
-                await send(`Hey so ${owner} is not available right now but your message has been noted. They will get back to you soon 🙏`);
+                await send(`Hey so ${owner} is not available right now but your message has been noted. They will get back to you soon 🙏\n\n_Type *menu* anytime if you want to check panels or top-up while you wait_ 😊`);
                 userStates[sender] = { step: 'SILENT', blockedUntil: Date.now() + 24 * 60 * 60 * 1000 };
                 return;
             }

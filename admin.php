@@ -110,13 +110,13 @@ if (!empty($gate_pass)) {
 // SECURITY: Firebase config loaded from environment variables.
 // ============================================================
 $firebaseConfig = [
-  "apiKey"            => env('FIREBASE_API_KEY'),
-  "authDomain"        => env('FIREBASE_AUTH_DOMAIN'),
-  "databaseURL"       => env('FIREBASE_DATABASE_URL'),
-  "projectId"         => env('FIREBASE_PROJECT_ID'),
-  "storageBucket"     => env('FIREBASE_STORAGE_BUCKET'),
-  "messagingSenderId" => env('FIREBASE_MESSAGING_SENDER_ID'),
-  "appId"             => env('FIREBASE_APP_ID'),
+  "apiKey"            => "",
+  "authDomain"        => "",
+  "databaseURL"       => "",
+  "projectId"         => "",
+  "storageBucket"     => "",
+  "messagingSenderId" => "",
+  "appId"             => "",
 ];
 
 // ── Admin login rate limiting (server-side) ───────────────────
@@ -1192,15 +1192,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             const defaultGames = [
                 { name: 'Free Fire',
                   packages: [
-                    { label: '100 Diamonds', price: '80' }, { label: '310 Diamonds', price: '220' },
-                    { label: '520 Diamonds', price: '350' }, { label: '1060 Diamonds', price: '680' },
-                    { label: '2180 Diamonds', price: '1350' }
+                    { label: '50 Diamonds',    price: '60'   },
+                    { label: '115 Diamonds',   price: '110'  },
+                    { label: '240 Diamonds',   price: '230'  },
+                    { label: '355 Diamonds',   price: '250'  },
+                    { label: '480 Diamonds',   price: '450'  },
+                    { label: '610 Diamonds',   price: '580'  },
+                    { label: '725 Diamonds',   price: '680'  },
+                    { label: '850 Diamonds',   price: '780'  },
+                    { label: '1090 Diamonds',  price: '950'  },
+                    { label: '1240 Diamonds',  price: '1100' },
+                    { label: '2530 Diamonds',  price: '2200' },
+                    { label: 'Weekly Member',  price: '220'  },
+                    { label: 'Monthly Member', price: '1050' },
+                    { label: 'Weekly Lite',    price: '70'   },
+                    { label: 'Level Up Pass',  price: '695'  }
                   ]
                 },
                 { name: 'PUBG Mobile',
                   packages: [
-                    { label: '60 UC', price: '80' }, { label: '325 UC', price: '380' },
-                    { label: '660 UC', price: '750' }, { label: '1800 UC', price: '1950' }
+                    { label: '60 UC',   price: '80'   },
+                    { label: '325 UC',  price: '380'  },
+                    { label: '660 UC',  price: '750'  },
+                    { label: '1800 UC', price: '1950' }
                   ]
                 }
             ];
