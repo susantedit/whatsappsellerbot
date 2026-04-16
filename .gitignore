@@ -1,0 +1,13 @@
+# Secrets — NEVER commit these
+.env
+*.env
+
+# WhatsApp session data (contains auth tokens)
+session_data/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

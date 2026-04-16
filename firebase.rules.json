@@ -1,0 +1,30 @@
+{
+  "rules": {
+    // Public read for menu data (bot + app need this)
+    "games": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "services": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "settings": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+
+    // Orders: bot writes with secret token, admin reads/updates
+    // The bot uses the FIREBASE_URL secret which includes the DB secret
+    "orders": {
+      ".read": "auth != null",
+      ".write": true
+    },
+
+    // Everything else: authenticated admin only
+    "$other": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}
