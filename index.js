@@ -314,7 +314,7 @@ async function startBot() {
             if (savedName) userStates[sender] = { step: 'RETURNING', name: savedName };
         }
         if (t === 'help') {
-            await send(`You can reply with 1 for General, 2 for Panels, 3 for Diamond Top-Up or 4 to Buy This Bot. Type restart anytime to start over or stop to end the chat.`);
+            await send(`You can reply with 1 for General, 2 for Panels, 3 for Diamond Top-Up, 4 to Buy This Bot or 5 to Ask a Question. Type restart anytime to start over or stop to end the chat.`);
             return;
         }
 
@@ -323,9 +323,8 @@ async function startBot() {
                            t.includes('bhane') || t.includes('panel') || t.includes('hack') || t.includes('cheat') ||
                            t.includes('work') || t.includes('safe') || t.includes('antiban') || t.includes('price') ||
                            t.includes('cost') || t.includes('explain') || t.includes('tell me') || t.includes('?');
-        if (isQuestion && GEMINI_KEY && userStates[sender]?.step !== 'ASK_NAME' &&
-            userStates[sender]?.step !== 'ASK_PHONE' && userStates[sender]?.step !== 'ASK_UID' &&
-            userStates[sender]?.step !== 'SEND_PAYMENT' && userStates[sender]?.step !== 'ASK_GAME_PHONE') {
+        const orderSteps = ['ASK_NAME','ASK_PHONE','ASK_UID','SEND_PAYMENT','ASK_GAME_PHONE'];
+        if (isQuestion && GEMINI_KEY && !orderSteps.includes(userStates[sender]?.step)) {
             const ctx = await buildBusinessContext();
             const aiReply = await askGemini(rawText, ctx, userName);
             if (aiReply) {
@@ -337,6 +336,22 @@ async function startBot() {
                     await send(`What do you want to order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
                 } else {
                     await send(aiReply);
+                    // if mid-order, remind them where they were
+                    const midSteps = ['PICK_SERVICE','PICK_GAME','PICK_PACKAGE','PICK_SERVICE_PKG','ASK_DURATION'];
+                    const curStep = userStates[sender]?.step;
+                    if (midSteps.includes(curStep)) {
+                        await delay(500);
+                        if (curStep === 'PICK_SERVICE' || curStep === 'PICK_SERVICE_PKG' || curStep === 'ASK_DURATION') {
+                            const list = userStates[sender].services?.map((s,i) => `*${i+1}.* ${s.name}`).join('\n') || '';
+                            if (list) await send(`Anyway, you were picking a panel 👆\n\n${list}\n\nReply with the number to continue`);
+                        } else if (curStep === 'PICK_GAME') {
+                            const list = userStates[sender].games?.map((g,i) => `*${i+1}.* ${g.name}`).join('\n') || '';
+                            if (list) await send(`Anyway, you were picking a game 👆\n\n${list}\n\nReply with the number to continue`);
+                        } else if (curStep === 'PICK_PACKAGE') {
+                            const list = userStates[sender].packages?.map((p,i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n') || '';
+                            if (list) await send(`Anyway, you were picking a package 👆\n\n${list}\n\nReply with the number to continue`);
+                        }
+                    }
                 }
                 return;
             }
@@ -349,7 +364,7 @@ async function startBot() {
         // ── New user ──────────────────────────────────────────────
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
-            const menu = `*1* 💬 General — For regular messages\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🤖 Buy This Bot — Get your own WhatsApp bot like this`;
+            const menu = `*1* 💬 General — For regular messages\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🤖 Buy This Bot — Get your own WhatsApp bot like this\n*5* ❓ Ask a Question — Prices, how panels work, anything`;
             const greeting = userData.name
                 ? `Hey ${userData.name}! Good to see you again 👋\n\nWhat can I help you with?\n\n${menu}`
                 : `👋 Welcome!\n\nPlease choose an option:\n\n${menu}\n\nReply with *1, 2, 3 or 4* 😊`;
@@ -361,7 +376,7 @@ async function startBot() {
         if (userStates[sender]?.step === 'RETURNING') {
             const name = userStates[sender].name || userData.name;
             userStates[sender] = { step: 'PICK_CATEGORY', name };
-            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
+            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot\n*5* ❓ Ask a Question`);
             return;
         }
 
@@ -425,6 +440,12 @@ async function startBot() {
                 return;
             }
 
+            if (t === '5' || t.includes('ask') || t.includes('question') || t.includes('faq')) {
+                userStates[sender] = { ...st, step: 'ASK_QUESTION' };
+                await send(`Sure! Ask me anything 😊\n\nYou can ask about:\n• Panel prices & features\n• How top-up works\n• Which panel is best\n• Anything else about our services`);
+                return;
+            }
+
             if (t === '3' || t.includes('top') || t.includes('diamond') || t.includes('game')) {                const data = await fbGet('games');
                 const games = toArray(data);
                 if (!games.length) { await send('No top-up packages right now, check back soon!'); return; }
@@ -450,6 +471,28 @@ async function startBot() {
                 }
             }
             await send(`Just reply with 1, 2 or 3 😊`);
+            return;
+        }
+
+        // ── ASK_QUESTION ──────────────────────────────────────────
+        if (st.step === 'ASK_QUESTION') {
+            if (GEMINI_KEY) {
+                const ctx = await buildBusinessContext();
+                const aiReply = await askGemini(rawText, ctx, userName);
+                if (aiReply) {
+                    const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
+                    await send(clean);
+                    await delay(600);
+                    if (aiReply.includes('[ORDER_INTENT]')) {
+                        userStates[sender] = { step: 'PICK_CATEGORY', name: userName };
+                        await send(`Want to place an order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
+                    } else {
+                        await send(`Got more questions? Just ask 😊\nOr type *menu* to go back to the main menu`);
+                    }
+                    return;
+                }
+            }
+            await send(`Sorry I couldn't answer that 😅 Type *menu* to go back`);
             return;
         }
 
