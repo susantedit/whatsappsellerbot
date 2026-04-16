@@ -557,6 +557,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             <li class="nav-item" data-target="settings">
                 <i class="fas fa-cog"></i> <span>Settings</span>
             </li>
+            <li class="nav-item" data-target="broadcast">
+                <i class="fas fa-bullhorn"></i> <span>Broadcast</span>
+            </li>
             <li class="nav-item logout-btn" id="logoutBtn">
                 <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
             </li>
@@ -652,6 +655,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                     </div>
                     <button class="btn-add" id="saveSettingsBtn" style="width:100%;justify-content:center;">Save Settings</button>
                     <p id="settingsSaved" style="color:var(--primary);font-weight:700;margin-top:12px;display:none;">✅ Saved!</p>
+                </div>
+            </div>
+
+            <!-- BROADCAST -->
+            <div id="broadcast" class="section">
+                <div class="header-flex"><h1>Broadcast</h1></div>
+                <div style="background:var(--bg-card);border-radius:12px;padding:24px;border:1px solid var(--border);max-width:500px;">
+                    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:20px;letter-spacing:1px;">Send a message to all customers who have ordered before. The bot will deliver it on WhatsApp.</p>
+                    <div style="margin-bottom:16px;">
+                        <label style="font-weight:700;display:block;margin-bottom:8px;font-size:0.8rem;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);">Message</label>
+                        <textarea id="broadcastMsg" rows="5" placeholder="Type your message here..." style="width:100%;padding:14px;background:#1a1a1a;border:1px solid var(--border);border-radius:8px;color:#fff;font-family:'Rajdhani',sans-serif;font-size:1rem;resize:vertical;box-sizing:border-box;"></textarea>
+                    </div>
+                    <button class="btn-add" id="sendBroadcastBtn" style="width:100%;justify-content:center;">
+                        <i class="fab fa-whatsapp"></i> Send to All Customers
+                    </button>
+                    <p id="broadcastStatus" style="color:var(--primary);font-weight:700;margin-top:12px;display:none;"></p>
+                </div>
+                <div style="margin-top:20px;">
+                    <div style="font-family:'Orbitron',sans-serif;font-size:0.75rem;letter-spacing:2px;color:var(--red);margin-bottom:12px;">CUSTOMER LIST</div>
+                    <div id="customerList" style="color:var(--text-muted);font-size:0.85rem;"></div>
                 </div>
             </div>
 
@@ -1056,6 +1079,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
         document.querySelectorAll('.close-modal').forEach(b => {
             b.onclick = () => document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
         });
+
+        // ── BROADCAST ────────────────────────────────────────────
+        function loadCustomers() {
+            db.ref('users').once('value', snap => {
+                const list = $('customerList');
+                if (!snap.exists()) { list.textContent = 'No customers yet.'; return; }
+                let html = '';
+                snap.forEach(child => {
+                    const u = child.val();
+                    html += `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
+                        <span style="color:#fff;font-weight:600;">${u.name || 'Unknown'}</span>
+                        <span style="color:var(--text-muted);">${child.key}</span>
+                    </div>`;
+                });
+                list.innerHTML = html;
+            });
+        }
+
+        // Load customers when broadcast tab is opened
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (item.dataset.target === 'broadcast') loadCustomers();
+            });
+        });
+
+        $('sendBroadcastBtn').onclick = async () => {
+            const msg = $('broadcastMsg').value.trim();
+            if (!msg) return;
+            const status = $('broadcastStatus');
+            status.textContent = 'Sending...';
+            status.style.display = 'block';
+
+            // Save broadcast to Firebase — bot picks it up
+            await db.ref('broadcasts').push({
+                message: msg,
+                timestamp: new Date().toISOString(),
+                status: 'pending'
+            });
+
+            status.textContent = '✅ Broadcast queued! Bot will deliver it on next run.';
+            $('broadcastMsg').value = '';
+            setTimeout(() => status.style.display = 'none', 4000);
+        };
 
     </script>
 </body>

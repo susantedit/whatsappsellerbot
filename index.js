@@ -8,12 +8,10 @@ const GEMINI_KEY   = process.env.GEMINI_API_KEY;
 
 const userStates = {};
 
-// ── Rate limiting: 50 messages per user per 30 minutes ──────────
+// ── Rate limiting ────────────────────────────────────────────────
 const rateLimits = {};
 function isRateLimited(sender) {
-    const now = Date.now();
-    const window = 30 * 60_000;
-    const max = 50;
+    const now = Date.now(), window = 30 * 60_000, max = 50;
     if (!rateLimits[sender]) rateLimits[sender] = { count: 0, start: now };
     if (now - rateLimits[sender].start > window) rateLimits[sender] = { count: 0, start: now };
     rateLimits[sender].count++;
@@ -28,49 +26,94 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // ── Firebase helpers ─────────────────────────────────────────────
 async function fbGet(path) {
-    try {
-        const res = await fetch(`${FIREBASE_URL}/${path}.json`);
-        return await res.json();
-    } catch { return null; }
+    try { return await (await fetch(`${FIREBASE_URL}/${path}.json`)).json(); }
+    catch { return null; }
 }
-
 async function fbPost(path, data) {
     try {
         await fetch(`${FIREBASE_URL}/${path}.json`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-    } catch (e) { console.error('fbPost error:', e); }
+    } catch (e) { console.error('fbPost:', e); }
+}
+async function fbSet(path, data) {
+    try {
+        await fetch(`${FIREBASE_URL}/${path}.json`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    } catch (e) { console.error('fbSet:', e); }
+}
+async function fbPatch(path, data) {
+    try {
+        await fetch(`${FIREBASE_URL}/${path}.json`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    } catch (e) { console.error('fbPatch:', e); }
 }
 
 function toArray(obj) {
     if (!obj) return [];
     return Object.keys(obj).map(k => ({ id: k, ...obj[k] }));
 }
-
 function numberedList(items, labelFn) {
     return items.map((item, i) => `*${i + 1}.* ${labelFn(item)}`).join('\n');
 }
-
 function pickItem(items, input, matchFn) {
     const num = parseInt(input);
     if (!isNaN(num) && num >= 1 && num <= items.length) return items[num - 1];
     return items.find(item => matchFn(item, input.toLowerCase())) || null;
 }
 
-// ── Gemini AI ────────────────────────────────────────────────
-async function askGemini(userMessage, businessContext) {
+// ── Persistent user memory ───────────────────────────────────────
+async function getUser(waNumber) {
+    return await fbGet(`users/${waNumber}`) || {};
+}
+async function saveUser(waNumber, data) {
+    await fbPatch(`users/${waNumber}`, { ...data, lastSeen: new Date().toISOString() });
+}
+
+// ── Gemini AI ────────────────────────────────────────────────────
+async function buildBusinessContext() {
+    const [games, services, settings] = await Promise.all([
+        fbGet('games'), fbGet('services'), fbGet('settings')
+    ]);
+    const owner = settings?.owner || 'the owner';
+    let ctx = `Business owner: ${owner}\n\n`;
+    if (games) {
+        ctx += `GAME TOP-UPS:\n`;
+        Object.values(games).forEach(g => {
+            ctx += `${g.name}:\n`;
+            if (g.packages) Object.values(g.packages).forEach(p => { ctx += `  ${p.label} = Rs.${p.price}\n`; });
+        });
+    }
+    if (services) {
+        ctx += `\nPANELS AND SERVICES:\n`;
+        Object.values(services).forEach(s => { ctx += `${s.name}: Rs.${s.price}${s.description ? ' (' + s.description + ')' : ''}\n`; });
+    }
+    return ctx;
+}
+
+async function askGemini(userMessage, ctx, userName) {
     if (!GEMINI_KEY) return null;
     try {
-        const systemPrompt =
-            `You are a WhatsApp sales bot for a gaming panel and diamond top-up business.\n` +
-            `Reply in the same language the user writes (Hindi, English, or mixed).\n` +
-            `Be short, friendly, and use gaming slang. Max 3 sentences.\n` +
-            `Never make up prices — only use what's listed below.\n` +
-            `If user wants to ORDER something, reply with exactly: [ORDER_INTENT]\n` +
-            `If user asks about something not in your catalog, say you don't have it.\n\n` +
-            `YOUR CATALOG:\n${businessContext}`;
+        const prompt =
+            `You are a real person running a gaming panel and diamond top-up business on WhatsApp. ` +
+            `Your name is the business owner. You talk like a normal person texting, not a bot. ` +
+            `Use casual language, gaming words, be friendly and warm. ` +
+            `VERY IMPORTANT: Reply in the EXACT same language the user writes. ` +
+            `If they write in Nepali, reply in Nepali. If Hindi, reply in Hindi. If Hinglish, reply in Hinglish. If English, reply in English. ` +
+            `Match their tone and language perfectly like a local friend would. ` +
+            `Keep replies conversational, 2 to 4 sentences max. ` +
+            `Never use bullet points, dashes, or lists in your reply. Just talk naturally like texting. ` +
+            `Never make up prices, only use what is in the catalog below. ` +
+            `If the user wants to buy or order something, end your reply with exactly: [ORDER_INTENT] ` +
+            `If the user asks about something not in your catalog, say you don't have it right now. ` +
+            `The user's name is ${userName || 'bro'}.\n\n` +
+            `YOUR CATALOG:\n${ctx}\n\n` +
+            `User says: ${userMessage}`;
 
         const res = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
@@ -78,61 +121,26 @@ async function askGemini(userMessage, businessContext) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: `${systemPrompt}\n\nUser: ${userMessage}` }]
-                    }],
-                    generationConfig: { maxOutputTokens: 150, temperature: 0.7 }
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { maxOutputTokens: 200, temperature: 0.85 }
                 })
             }
         );
         const data = await res.json();
         return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
-    } catch (e) {
-        console.error('Gemini error:', e.message);
-        return null;
-    }
-}
-
-// ── Build business context from Firebase ─────────────────────
-async function getBusinessContext() {
-    const [games, services, settings] = await Promise.all([
-        fbGet('games'), fbGet('services'), fbGet('settings')
-    ]);
-
-    let ctx = '';
-    const owner = settings?.owner || 'the owner';
-    ctx += `Business owner: ${owner}\n\n`;
-
-    if (games) {
-        ctx += `GAME TOP-UPS:\n`;
-        Object.values(games).forEach(g => {
-            ctx += `- ${g.name}:\n`;
-            if (g.packages) {
-                Object.values(g.packages).forEach(p => {
-                    ctx += `  • ${p.label} = ₹${p.price}\n`;
-                });
-            }
-        });
-    }
-
-    if (services) {
-        ctx += `\nPANELS & SERVICES:\n`;
-        Object.values(services).forEach(s => {
-            ctx += `- ${s.name}: ₹${s.price}${s.description ? ' (' + s.description + ')' : ''}\n`;
-        });
-    }
-
-    return ctx;
+    } catch (e) { console.error('Gemini error:', e.message); return null; }
 }
 
 // ── Bot ──────────────────────────────────────────────────────────
+let sock; // global so order status listener can use it
+
 async function startBot() {
-    if (!FIREBASE_URL) { console.log('❌ FIREBASE_URL missing!'); process.exit(1); }
+    if (!FIREBASE_URL) { console.log('FIREBASE_URL missing!'); process.exit(1); }
 
     const { state, saveCreds } = await useMultiFileAuthState('session_data');
     const { version } = await fetchLatestBaileysVersion();
 
-    const sock = makeWASocket({
+    sock = makeWASocket({
         version, auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
@@ -140,12 +148,12 @@ async function startBot() {
     });
 
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
-        if (qr) {
-            console.clear();
-            qrcode.generate(qr, { small: true });
-            console.log('\n⚠️  Scan QR above with WhatsApp');
+        if (qr) { console.clear(); qrcode.generate(qr, { small: true }); console.log('\nScan QR above'); }
+        if (connection === 'open') {
+            console.log('Bot is online!');
+            listenOrderStatusChanges();
+            deliverBroadcasts(); // deliver any pending broadcasts
         }
-        if (connection === 'open')  console.log('✅ Bot is online!');
         if (connection === 'close') {
             const code = lastDisconnect?.error?.output?.statusCode;
             if (code !== DisconnectReason.loggedOut) startBot();
@@ -160,56 +168,62 @@ async function startBot() {
         if (msg.key.fromMe) return;
 
         const sender  = msg.key.remoteJid;
+        const waNum   = sender.split('@')[0];
         const rawText = sanitizeInput(msg.message.conversation || msg.message.extendedTextMessage?.text || '');
         const t       = rawText.toLowerCase();
 
-        if (isRateLimited(sender)) { console.warn(`[RATE LIMIT] ${sender.split('@')[0]}`); return; }
+        if (isRateLimited(sender)) { console.warn(`[RATE LIMIT] ${waNum}`); return; }
+        console.log(`[${waNum}] ${rawText}`);
 
-        console.log(`📩 [${sender.split('@')[0]}] ${rawText}`);
-
-        const send = txt => sock.sendMessage(sender, { text: txt });
-
-        await delay(900);
+        // typing indicator
+        const send = async (text) => {
+            await sock.sendPresenceUpdate('composing', sender);
+            await delay(800 + Math.random() * 600);
+            await sock.sendPresenceUpdate('paused', sender);
+            return sock.sendMessage(sender, { text });
+        };
 
         // ── Silent (General) — blocked 24h ───────────────────────
         if (userStates[sender]?.step === 'SILENT') {
-            if (Date.now() > (userStates[sender].blockedUntil || 0)) {
-                delete userStates[sender]; // expired — reset
-            } else {
-                return; // still blocked — no reply
-            }
+            if (Date.now() > (userStates[sender].blockedUntil || 0)) delete userStates[sender];
+            else return;
         }
 
         // ── Global commands ───────────────────────────────────────
         if (t === 'stop' || t === 'exit' || t === 'cancel') {
             delete userStates[sender];
-            await send('Okay, see you! 👋');
+            await send('Okay see you! Type anything to start again 👋');
             return;
         }
-
         if (t === 'restart' || t === 'start' || t === 'hi' || t === 'hello' || t === 'hey' || t === 'menu') {
             const savedName = userStates[sender]?.name || null;
             delete userStates[sender];
             if (savedName) userStates[sender] = { step: 'RETURNING', name: savedName };
         }
-
         if (t === 'help') {
-            await send(`Here's what you can do:\n\n*1* — General 💬\n*2* — Panels 🎯\n*3* — Diamond Top-Up 💎\n\n*restart* — Start over\n*stop* — End chat`);
+            await send(`You can reply with 1 for General, 2 for Panels or 3 for Diamond Top-Up. Type restart anytime to start over or stop to end the chat.`);
             return;
         }
+
+        // ── Load persistent user data ─────────────────────────────
+        const userData = await getUser(waNum);
+        const userName = userStates[sender]?.name || userData.name || null;
 
         // ── New user ──────────────────────────────────────────────
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
-            await send(`👋 *Welcome!*\n\nHow can we help you today?\n\n*1* — General 💬\n*2* — Panels 🎯\n*3* — Diamond Top-Up 💎\n\n_Reply with 1, 2, or 3_`);
+            const greeting = userData.name
+                ? `Hey ${userData.name}! Good to see you again 👋 What can I help you with today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`
+                : `Hey! Welcome 👋 What brings you here today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`;
+            await send(greeting);
             return;
         }
 
         // ── Returning user ────────────────────────────────────────
         if (userStates[sender]?.step === 'RETURNING') {
-            const name = userStates[sender].name;
+            const name = userStates[sender].name || userData.name;
             userStates[sender] = { step: 'PICK_CATEGORY', name };
-            await send(`Hey *${name}*! 👋 Good to see you again.\n\n*1* — General 💬\n*2* — Panels 🎯\n*3* — Diamond Top-Up 💎\n\n_Reply with 1, 2, or 3_`);
+            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`);
             return;
         }
 
@@ -217,169 +231,191 @@ async function startBot() {
 
         // ── PICK_CATEGORY ─────────────────────────────────────────
         if (st.step === 'PICK_CATEGORY') {
-
             if (t === '1' || t.includes('general')) {
                 const settings = await fbGet('settings');
                 const owner = settings?.owner || 'the owner';
-                await send(`Hey 👋 *${owner}* isn't available right now.\n\nYour message has been noted — they'll get back to you soon ⏳`);
+                await send(`Hey so ${owner} is not available right now but your message has been noted. They will get back to you soon 🙏`);
                 userStates[sender] = { step: 'SILENT', blockedUntil: Date.now() + 24 * 60 * 60 * 1000 };
                 return;
             }
-
             if (t === '2' || t.includes('panel') || t.includes('service')) {
                 const data = await fbGet('services');
                 const services = toArray(data);
-                if (!services.length) { await send('No panels available right now. Check back soon!'); return; }
+                if (!services.length) { await send('No panels available right now, check back soon!'); return; }
                 userStates[sender] = { ...st, step: 'PICK_SERVICE', services };
-                await send(`🎯 *Available Panels*\n\n${numberedList(services, s => `*${s.name}* — ₹${s.price}\n   _${s.description || ''}_`)}\n\n_Reply with the number_`);
+                const list = services.map((s, i) => `*${i+1}.* ${s.name} — ₹${s.price}${s.description ? '\n    ' + s.description : ''}`).join('\n\n');
+                await send(`Here are the panels we have right now 🎯\n\n${list}\n\nJust reply with the number you want`);
                 return;
             }
-
             if (t === '3' || t.includes('top') || t.includes('diamond') || t.includes('game')) {
                 const data = await fbGet('games');
                 const games = toArray(data);
-                if (!games.length) { await send('No top-up packages available right now. Check back soon!'); return; }
+                if (!games.length) { await send('No top-up packages right now, check back soon!'); return; }
                 userStates[sender] = { ...st, step: 'PICK_GAME', games };
-                await send(`💎 *Select a Game*\n\n${numberedList(games, g => g.name)}\n*${games.length + 1}.* Other / Custom Game\n\n_Reply with the number_`);
+                const list = games.map((g, i) => `*${i+1}.* ${g.name}`).join('\n');
+                await send(`Which game do you want to top-up? 💎\n\n${list}\n*${games.length+1}.* Other game\n\nReply with the number`);
                 return;
             }
-
-            await send(`Please reply with *1*, *2*, or *3* 😊`);
+            // unknown — try AI
+            if (GEMINI_KEY) {
+                const ctx = await buildBusinessContext();
+                const aiReply = await askGemini(rawText, ctx, userName);
+                if (aiReply) {
+                    if (aiReply.includes('[ORDER_INTENT]')) {
+                        const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
+                        if (clean) await send(clean);
+                        await delay(500);
+                        await send(`So what do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`);
+                    } else {
+                        await send(aiReply);
+                    }
+                    return;
+                }
+            }
+            await send(`Just reply with 1, 2 or 3 😊`);
             return;
         }
-        if (st.step === 'PICK_GAME') {
-            const games    = st.games;
-            const otherNum = games.length + 1;
 
+        // ── PICK_GAME ─────────────────────────────────────────────
+        if (st.step === 'PICK_GAME') {
+            const games = st.games, otherNum = games.length + 1;
             if (t === String(otherNum) || t.includes('other') || t.includes('custom')) {
                 userStates[sender] = { ...st, step: 'OTHER_GAME' };
-                await send(`📩 *Custom Game Request*\n\nPlease tell me:\n- Which game?\n- What you need?\n\nThe owner will contact you shortly 🤝`);
+                await send(`Sure! Tell me which game and what exactly you need. The owner will reach out with a custom deal 🤝`);
                 return;
             }
-
             const picked = pickItem(games, t, (g, input) => g.name.toLowerCase().includes(input));
-            if (!picked) { await send(`Couldn't find that 😅\n\n${numberedList(games, g => g.name)}\n*${otherNum}.* Other\n\n_Reply with a number_`); return; }
-
+            if (!picked) {
+                const list = games.map((g, i) => `*${i+1}.* ${g.name}`).join('\n');
+                await send(`Hmm I couldn't find that one. Here are the options:\n\n${list}\n*${otherNum}.* Other\n\nReply with a number`);
+                return;
+            }
             const packages = toArray(picked.packages);
-            if (!packages.length) { await send(`No packages for *${picked.name}* right now.`); return; }
-
+            if (!packages.length) { await send(`No packages for ${picked.name} right now, check back soon!`); return; }
             userStates[sender] = { ...st, step: 'PICK_PACKAGE', game: picked, packages };
-            await send(`🔥 *${picked.name} Top-Up*\n\n${numberedList(packages, p => `*${p.label}* — ₹${p.price}`)}\n\n_Reply with the number_`);
+            const list = packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
+            await send(`${picked.name} packages 🔥\n\n${list}\n\nWhich one do you want?`);
             return;
         }
 
         // ── OTHER_GAME ────────────────────────────────────────────
         if (st.step === 'OTHER_GAME') {
-            await fbPost('orders', { type: 'custom_request', message: rawText, waNumber: sender.split('@')[0], status: 'Pending', timestamp: new Date().toISOString() });
+            await fbPost('orders', { type: 'custom_request', message: rawText, waNumber: waNum, status: 'Pending', timestamp: new Date().toISOString() });
             userStates[sender] = { ...st, step: 'DONE' };
-            await send(`✅ *Request saved!*\n\nThe owner will reach out soon 🤝\n\nType *restart* for a new order.`);
+            await send(`Got it! Your request has been saved. The owner will message you soon with the details 🤝`);
             return;
         }
 
         // ── PICK_SERVICE ──────────────────────────────────────────
         if (st.step === 'PICK_SERVICE') {
             const picked = pickItem(st.services, t, (s, input) => s.name.toLowerCase().includes(input));
-            if (!picked) { await send(`Couldn't find that 😅\n\n${numberedList(st.services, s => `${s.name} — ₹${s.price}`)}\n\n_Reply with a number_`); return; }
+            if (!picked) {
+                const list = st.services.map((s, i) => `*${i+1}.* ${s.name} — ₹${s.price}`).join('\n');
+                await send(`Couldn't find that one. Here are the options:\n\n${list}\n\nReply with a number`);
+                return;
+            }
             userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: picked.name, price: picked.price } };
-            await send(`🛠️ *${picked.name}* — ₹${picked.price}\n\nWhat's your *name*? 😊`);
+            await send(`Nice choice! ${picked.name} for ₹${picked.price} 🎯\n\nWhat's your name?`);
             return;
         }
 
         // ── PICK_PACKAGE ──────────────────────────────────────────
         if (st.step === 'PICK_PACKAGE') {
             const picked = pickItem(st.packages, t, (p, input) => p.label.toLowerCase().includes(input));
-            if (!picked) { await send(`Couldn't find that 😅\n\n${numberedList(st.packages, p => `${p.label} — ₹${p.price}`)}\n\n_Reply with a number_`); return; }
+            if (!picked) {
+                const list = st.packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
+                await send(`Couldn't find that. Here are the options:\n\n${list}\n\nReply with a number`);
+                return;
+            }
             userStates[sender] = { ...st, step: 'ASK_UID', orderData: { type: 'topup', game: st.game.name, gameId: st.game.id, package: picked.label, packageId: picked.id, price: picked.price } };
-            await send(`✅ *${st.game.name} — ${picked.label}* (₹${picked.price})\n\nPlease enter your *Game UID* 🎮`);
+            await send(`${st.game.name} ${picked.label} for ₹${picked.price} ✅\n\nSend me your game UID 🎮`);
             return;
         }
 
         // ── ASK_UID ───────────────────────────────────────────────
         if (st.step === 'ASK_UID') {
             userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { ...st.orderData, uid: rawText } };
-            await send(`Got UID: *${rawText}* ✅\n\nWhat's your *name*? 😊`);
+            await send(`Got the UID ✅ What's your name?`);
             return;
         }
 
         // ── ASK_NAME ──────────────────────────────────────────────
         if (st.step === 'ASK_NAME') {
             userStates[sender] = { ...st, step: 'ASK_PHONE', name: rawText, orderData: { ...st.orderData, name: rawText } };
-            await send(`Nice to meet you, *${rawText}*! 👋\n\nYour *phone number*? 📱`);
+            await saveUser(waNum, { name: rawText }); // save name persistently
+            await send(`Nice to meet you ${rawText}! 👋 What's your phone number?`);
             return;
         }
 
         // ── ASK_PHONE ─────────────────────────────────────────────
         if (st.step === 'ASK_PHONE') {
             userStates[sender] = { ...st, step: 'SEND_PAYMENT', orderData: { ...st.orderData, phone: rawText } };
-
             const settings = await fbGet('settings');
-            const upi    = settings?.upi || null;
-            const qrUrl  = settings?.qr_image_url || null;
-            const od     = st.orderData;
-
+            const upi = settings?.upi || null;
+            const qrUrl = settings?.qr_image_url || null;
+            const od = st.orderData;
             const paymentMsg =
-                `💳 *Payment Details*\n\n` +
-                `Amount: *₹${od.price}*\n` +
-                (upi ? `UPI ID: \`${upi}\`\n` : '') +
-                `\n⚠️ *IMPORTANT:* Write your name and phone in the payment remark.\n` +
-                `Example: _${od.name} - ${rawText}_\n\n` +
-                `After paying, send the *payment screenshot* here 📸`;
-
+                `Payment details 💳\n\nAmount ₹${od.price}` +
+                (upi ? `\nUPI ${upi}` : '') +
+                `\n\nWhen paying please write your name and phone number in the remarks like this: ${od.name} ${rawText}\n\nAfter paying send the screenshot here 📸`;
             if (qrUrl) {
+                await sock.sendPresenceUpdate('composing', sender);
+                await delay(800);
                 await sock.sendMessage(sender, { image: { url: qrUrl }, caption: paymentMsg });
             } else if (fs.existsSync('./payment.jpeg')) {
+                await sock.sendPresenceUpdate('composing', sender);
+                await delay(800);
                 await sock.sendMessage(sender, { image: fs.readFileSync('./payment.jpeg'), caption: paymentMsg });
             } else {
                 await send(paymentMsg);
             }
-
-            await delay(600);
-            await send(`⚠️ *Disclaimer:*\nIf your payment does NOT include your name and phone in the remark, your order may not be verified.\n\nPlease ensure correct details before paying.`);
+            await delay(700);
+            await send(`One important thing — if you don't write your name and phone in the payment remarks your order might not get verified. Please make sure you do that before paying 🙏`);
             return;
         }
 
         // ── SEND_PAYMENT ──────────────────────────────────────────
         if (st.step === 'SEND_PAYMENT') {
             const hasImage = !!(msg.message?.imageMessage);
-            const proof    = hasImage ? '[Screenshot received]' : rawText;
-            const od       = st.orderData;
-
-            await fbPost('orders', {
+            const proof = hasImage ? '[Screenshot received]' : rawText;
+            const od = st.orderData;
+            const orderRef = await fbPost('orders', {
                 type: od.type, game: od.game || null, package: od.package || null,
                 uid: od.uid || null, item: od.item || null,
                 name: od.name, phone: od.phone, price: od.price,
-                paymentProof: proof, waNumber: sender.split('@')[0],
+                paymentProof: proof, waNumber: waNum,
                 status: 'Pending', timestamp: new Date().toISOString()
             });
-
+            // save order ref to user profile for status notifications
+            await saveUser(waNum, { lastOrderWa: sender });
             userStates[sender] = { step: 'RETURNING', name: od.name };
-
             await send(
-                `✅ *Order received!*\n\n` +
-                (od.game ? `🎮 Game: *${od.game}*\n📦 Package: *${od.package}*\n🆔 UID: *${od.uid}*\n` : `🛠️ Service: *${od.item}*\n`) +
-                `👤 Name: *${od.name}*\n📱 Phone: *${od.phone}*\n💰 Amount: ₹${od.price}\n\n` +
-                `Your order is being processed ⏳\nYou will be contacted shortly 🙌`
+                `Order received ${od.name}! 🎉\n\n` +
+                (od.game ? `Game ${od.game}\nPackage ${od.package}\nUID ${od.uid}\n` : `Service ${od.item}\n`) +
+                `Amount ₹${od.price}\n\nWe will process it after verifying your payment. Usually takes 15 to 30 minutes. We will message you when it's done 🙌`
             );
-            await delay(700);
-            await send(`Need anything else?\n\n*restart* — New order\n*stop* — End chat`);
+            await delay(600);
+            await send(`Need anything else? Type restart for a new order or stop to end the chat`);
             return;
         }
 
         // ── DONE ──────────────────────────────────────────────────
         if (st.step === 'DONE') {
-            await send(`Type *restart* to place a new order or *stop* to end 😊`);
+            await send(`Type restart to place a new order or stop to end 😊`);
             return;
         }
 
-        // ── AI fallback — Gemini handles anything not caught above ──
+        // ── AI fallback ───────────────────────────────────────────
         if (GEMINI_KEY) {
-            const ctx = await getBusinessContext();
-            const aiReply = await askGemini(rawText, ctx);
+            const ctx = await buildBusinessContext();
+            const aiReply = await askGemini(rawText, ctx, userName);
             if (aiReply) {
                 if (aiReply.includes('[ORDER_INTENT]')) {
-                    delete userStates[sender];
+                    const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
+                    if (clean) await send(clean);
+                    await delay(500);
                     userStates[sender] = { step: 'PICK_CATEGORY' };
-                    await send(`Sure! Let's get your order sorted 🎮\n\n*1* — General 💬\n*2* — Panels 🎯\n*3* — Diamond Top-Up 💎\n\n_Reply with 1, 2, or 3_`);
+                    await send(`What do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`);
                 } else {
                     await send(aiReply);
                 }
@@ -387,8 +423,78 @@ async function startBot() {
             }
         }
 
-        await send(`I didn't get that 😅\n\nType *help* to see options or *restart* to start over.`);
+        await send(`Didn't quite get that 😅 Type help to see options or restart to start over`);
     });
+}
+
+// ── Broadcast delivery ───────────────────────────────────────────
+async function deliverBroadcasts() {
+    if (!sock) return;
+    try {
+        const broadcasts = await fbGet('broadcasts');
+        if (!broadcasts) return;
+        const users = await fbGet('users');
+        if (!users) return;
+
+        for (const [bid, broadcast] of Object.entries(broadcasts)) {
+            if (broadcast.status !== 'pending') continue;
+
+            // mark as sending
+            await fbPatch(`broadcasts/${bid}`, { status: 'sending' });
+
+            let sent = 0;
+            for (const [waNum, user] of Object.entries(users)) {
+                try {
+                    const sender = waNum + '@s.whatsapp.net';
+                    await sock.sendMessage(sender, { text: broadcast.message });
+                    sent++;
+                    await delay(1500); // avoid spam detection
+                } catch (e) { console.error(`Broadcast failed for ${waNum}:`, e.message); }
+            }
+
+            await fbPatch(`broadcasts/${bid}`, { status: 'done', sentTo: sent });
+            console.log(`[BROADCAST] Sent to ${sent} users`);
+        }
+    } catch (e) { console.error('Broadcast error:', e.message); }
+}
+
+// ── Order status change listener ─────────────────────────────────
+// Watches Firebase orders and messages customer when status changes
+function listenOrderStatusChanges() {
+    if (!sock) return;
+    const statusCache = {};
+
+    setInterval(async () => {
+        try {
+            const orders = await fbGet('orders');
+            if (!orders) return;
+            for (const [id, order] of Object.entries(orders)) {
+                if (!order.waNumber || !order.status) continue;
+                const cacheKey = `${id}_${order.status}`;
+                if (statusCache[cacheKey]) continue; // already notified
+                statusCache[cacheKey] = true;
+                // only notify on status changes to Processing or Completed
+                if (order.status === 'Processing' || order.status === 'Completed') {
+                    const prevKey = Object.keys(statusCache).find(k => k.startsWith(id + '_') && k !== cacheKey);
+                    if (!prevKey) continue; // first time seeing this order, skip
+                    const sender = order.waNumber + '@s.whatsapp.net';
+                    const name = order.name || 'bro';
+                    let msg = '';
+                    if (order.status === 'Processing') {
+                        msg = `Hey ${name}! Your order is being processed right now 🔄 We are working on it, won't take long!`;
+                    } else if (order.status === 'Completed') {
+                        msg = `${name} your order is done! ✅\n\n` +
+                            (order.game ? `Game ${order.game}\nPackage ${order.package}\nUID ${order.uid}\n` : `Service ${order.item}\n`) +
+                            `\nEnjoy! If you have any issues just message us 🙏`;
+                    }
+                    if (msg) {
+                        await sock.sendMessage(sender, { text: msg });
+                        console.log(`[STATUS NOTIFY] ${order.waNumber} → ${order.status}`);
+                    }
+                }
+            }
+        } catch (e) { console.error('Status listener error:', e.message); }
+    }, 30_000); // check every 30 seconds
 }
 
 startBot().catch(err => console.error('Fatal error:', err));
