@@ -2,9 +2,13 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLat
 const qrcode = require('qrcode-terminal');
 const pino   = require('pino');
 const fs     = require('fs');
+const nodemailer = require('nodemailer');
 
-const FIREBASE_URL = process.env.FIREBASE_URL;
-const GEMINI_KEY   = process.env.GEMINI_API_KEY;
+const FIREBASE_URL  = process.env.FIREBASE_URL;
+const GEMINI_KEY    = process.env.GEMINI_API_KEY;
+const SMTP_USER     = process.env.SMTP_USER;
+const SMTP_PASS     = process.env.SMTP_PASS;
+const NOTIFY_EMAIL  = process.env.NOTIFY_EMAIL || SMTP_USER; // where to send order alerts
 
 const userStates = {};
 
@@ -54,17 +58,41 @@ async function fbPatch(path, data) {
     } catch (e) { console.error('fbPatch:', e); }
 }
 
+// ── Email notification ───────────────────────────────────────────
+async function sendOrderEmail(order) {
+    if (!SMTP_USER || !SMTP_PASS || !NOTIFY_EMAIL) return;
+    try {
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: SMTP_USER, pass: SMTP_PASS }
+        });
+        const subject = `🛒 New Order — ${order.name || 'Unknown'} — ₹${order.price}`;
+        const body = `
+New order received on your WhatsApp bot!
+
+Name:    ${order.name || '-'}
+Phone:   ${order.phone || '-'}
+WA:      ${order.waNumber || '-'}
+Type:    ${order.type}
+${order.game ? `Game:    ${order.game}\nPackage: ${order.package}\nUID:     ${order.uid || '-'}` : `Service: ${order.item}`}
+Amount:  ₹${order.price}
+Time:    ${order.timestamp}
+        `.trim();
+        await transporter.sendMail({ from: SMTP_USER, to: NOTIFY_EMAIL, subject, text: body });
+        console.log('[EMAIL] Order notification sent');
+    } catch (e) { console.error('[EMAIL] Failed:', e.message); }
+}
+
 function toArray(obj) {
     if (!obj) return [];
     return Object.keys(obj).map(k => ({ id: k, ...obj[k] }));
 }
-function numberedList(items, labelFn) {
-    return items.map((item, i) => `*${i + 1}.* ${labelFn(item)}`).join('\n');
-}
 function pickItem(items, input, matchFn) {
+    if (!input || !items) return null;
+    input = input.toLowerCase().trim();
     const num = parseInt(input);
     if (!isNaN(num) && num >= 1 && num <= items.length) return items[num - 1];
-    return items.find(item => matchFn(item, input.toLowerCase())) || null;
+    return items.find(item => matchFn(item, input)) || null;
 }
 
 // ── Persistent user memory ───────────────────────────────────────
@@ -207,7 +235,7 @@ async function startBot() {
             if (savedName) userStates[sender] = { step: 'RETURNING', name: savedName };
         }
         if (t === 'help') {
-            await send(`You can reply with 1 for General, 2 for Panels or 3 for Diamond Top-Up. Type restart anytime to start over or stop to end the chat.`);
+            await send(`You can reply with 1 for General, 2 for Panels, 3 for Diamond Top-Up or 4 to Buy This Bot. Type restart anytime to start over or stop to end the chat.`);
             return;
         }
 
@@ -219,8 +247,8 @@ async function startBot() {
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
             const greeting = userData.name
-                ? `Hey ${userData.name}! Good to see you again 👋 What can I help you with today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`
-                : `Hey! Welcome 👋 What brings you here today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`;
+                ? `Hey ${userData.name}! Good to see you again 👋 What can I help you with today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`
+                : `Hey! Welcome 👋 What brings you here today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`;
             await send(greeting);
             return;
         }
@@ -229,7 +257,7 @@ async function startBot() {
         if (userStates[sender]?.step === 'RETURNING') {
             const name = userStates[sender].name || userData.name;
             userStates[sender] = { step: 'PICK_CATEGORY', name };
-            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`);
+            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`);
             return;
         }
 
@@ -249,12 +277,51 @@ async function startBot() {
                 const services = toArray(data);
                 if (!services.length) { await send('No panels available right now, check back soon!'); return; }
                 userStates[sender] = { ...st, step: 'PICK_SERVICE', services };
-                const list = services.map((s, i) => `*${i+1}.* ${s.name} — ₹${s.price}${s.description ? '\n    ' + s.description : ''}`).join('\n\n');
-                await send(`Here are the panels we have right now 🎯\n\n${list}\n\nJust reply with the number you want`);
+                const list = services.map((s, i) => {
+                    const pkgs = s.packages ? Object.values(s.packages) : [];
+                    const prices = pkgs.map(p => `${p.label} ₹${p.price}`).join(' | ');
+                    return `*${i+1}.* ${s.name}\n    ${prices || `₹${s.price}`}${s.description ? '\n    _' + s.description + '_' : ''}`;
+                }).join('\n\n');
+                await send(`Here are all the panels 🎯\n\n${list}\n\nReply with the number you want`);
                 return;
             }
-            if (t === '3' || t.includes('top') || t.includes('diamond') || t.includes('game')) {
-                const data = await fbGet('games');
+            if (t === '4' || t.includes('bot') || t.includes('buy bot') || t.includes('setup')) {
+                userStates[sender] = { ...st, step: 'BOT_INQUIRY' };
+                await send(
+                    `🤖 *WhatsApp Bot Setup*\n\n` +
+                    `Get your own WhatsApp business bot just like this one!\n\n` +
+                    `✅ Full setup & configuration\n` +
+                    `✅ Admin panel included\n` +
+                    `✅ Firebase database\n` +
+                    `✅ AI-powered replies\n` +
+                    `✅ 12 months support\n\n` +
+                    `💰 *Setup Fee: Rs. 1,500*\n\n` +
+                    `To proceed, please make the payment of *Rs. 1,500* and send the screenshot here 📸\n\n` +
+                    `After payment Susant will contact you to set everything up 🙌`
+                );
+                await delay(600);
+                // send QR for bot payment too
+                const settings = await fbGet('settings');
+                const upi = settings?.upi || null;
+                const qrUrl = settings?.qr_image_url || null;
+                const payMsg = `💳 Payment Details\n\nAmount: Rs. 1,500` + (upi ? `\nUPI: ${upi}` : '') + `\n\n⚠️ Write your Name + Phone in the remark!\nExample: Susant - 98XXXXXXXX`;
+                if (qrUrl) {
+                    await sock.sendPresenceUpdate('composing', sender);
+                    await delay(800);
+                    await sock.sendMessage(sender, { image: { url: qrUrl }, caption: payMsg });
+                } else if (fs.existsSync('./payment.jpeg')) {
+                    await sock.sendPresenceUpdate('composing', sender);
+                    await delay(800);
+                    await sock.sendMessage(sender, { image: fs.readFileSync('./payment.jpeg'), caption: payMsg });
+                } else {
+                    await send(payMsg);
+                }
+                await delay(500);
+                await send(`⚠️ *Disclaimer:* Money will not be refunded if your payment remark does not include your Name and Phone Number. Please double-check before paying 🙏`);
+                return;
+            }
+
+            if (t === '3' || t.includes('top') || t.includes('diamond') || t.includes('game')) {                const data = await fbGet('games');
                 const games = toArray(data);
                 if (!games.length) { await send('No top-up packages right now, check back soon!'); return; }
                 userStates[sender] = { ...st, step: 'PICK_GAME', games };
@@ -271,7 +338,7 @@ async function startBot() {
                         const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
                         if (clean) await send(clean);
                         await delay(500);
-                        await send(`So what do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`);
+                        await send(`So what do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`);
                     } else {
                         await send(aiReply);
                     }
@@ -282,12 +349,26 @@ async function startBot() {
             return;
         }
 
+        // ── BOT_INQUIRY ───────────────────────────────────────────
+        if (st.step === 'BOT_INQUIRY') {
+            const hasImage = !!(msg.message?.imageMessage);
+            await fbPost('orders', {
+                type: 'bot_setup', item: 'WhatsApp Bot Setup 12 months', price: 1500,
+                paymentProof: hasImage ? '[Screenshot received]' : rawText,
+                waNumber: waNum, status: 'Pending', timestamp: new Date().toISOString()
+            });
+            await sendOrderEmail({ type: 'bot_setup', name: waNum, phone: '-', item: 'Bot Setup 12 months', price: 1500, waNumber: waNum, timestamp: new Date().toISOString() });
+            userStates[sender] = { step: 'DONE' };
+            await send(`Payment received! ✅ Susant will contact you shortly to set up your bot. Thank you 🙏`);
+            return;
+        }
+
         // ── PICK_GAME ─────────────────────────────────────────────
         if (st.step === 'PICK_GAME') {
             const games = st.games, otherNum = games.length + 1;
             if (t === String(otherNum) || t.includes('other') || t.includes('custom')) {
                 userStates[sender] = { ...st, step: 'OTHER_GAME' };
-                await send(`Sure! Tell me which game and what exactly you need. The owner will reach out with a custom deal 🤝`);
+                await send(`Sure! Tell me which game and what you need. Susant will reach out to you with the deal 🤝`);
                 return;
             }
             const picked = pickItem(games, t, (g, input) => g.name.toLowerCase().includes(input));
@@ -307,8 +388,9 @@ async function startBot() {
         // ── OTHER_GAME ────────────────────────────────────────────
         if (st.step === 'OTHER_GAME') {
             await fbPost('orders', { type: 'custom_request', message: rawText, waNumber: waNum, status: 'Pending', timestamp: new Date().toISOString() });
+            await sendOrderEmail({ type: 'custom_request', name: waNum, phone: '-', item: rawText, price: 0, waNumber: waNum, timestamp: new Date().toISOString() });
             userStates[sender] = { ...st, step: 'DONE' };
-            await send(`Got it! Your request has been saved. The owner will message you soon with the details 🤝`);
+            await send(`Got it! Your request has been saved. Susant will message you soon with the deal 🤝`);
             return;
         }
 
@@ -316,12 +398,33 @@ async function startBot() {
         if (st.step === 'PICK_SERVICE') {
             const picked = pickItem(st.services, t, (s, input) => s.name.toLowerCase().includes(input));
             if (!picked) {
-                const list = st.services.map((s, i) => `*${i+1}.* ${s.name} — ₹${s.price}`).join('\n');
+                const list = st.services.map((s, i) => `*${i+1}.* ${s.name}`).join('\n');
                 await send(`Couldn't find that one. Here are the options:\n\n${list}\n\nReply with a number`);
                 return;
             }
-            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: picked.name, price: picked.price } };
-            await send(`Nice choice! ${picked.name} for ₹${picked.price} 🎯\n\nWhat's your name?`);
+            // if service has packages, show them like games
+            const packages = picked.packages ? Object.keys(picked.packages).map(k => ({ id: k, ...picked.packages[k] })) : [];
+            if (packages.length) {
+                userStates[sender] = { ...st, step: 'PICK_SERVICE_PKG', service: picked, packages };
+                const list = packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
+                await send(`${picked.name} 🎯\n\n${list}\n\nWhich one do you want?`);
+            } else {
+                userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: picked.name, price: picked.price } };
+                await send(`Nice choice! ${picked.name} for ₹${picked.price} 🎯\n\nWhat's your name?`);
+            }
+            return;
+        }
+
+        // ── PICK_SERVICE_PKG ──────────────────────────────────────
+        if (st.step === 'PICK_SERVICE_PKG') {
+            const picked = pickItem(st.packages, t, (p, input) => p.label.toLowerCase().includes(input));
+            if (!picked) {
+                const list = st.packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
+                await send(`Couldn't find that. Here are the options:\n\n${list}\n\nReply with a number`);
+                return;
+            }
+            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} ${picked.label}`, price: picked.price } };
+            await send(`${st.service.name} ${picked.label} for ₹${picked.price} ✅\n\nWhat's your name?`);
             return;
         }
 
@@ -385,23 +488,29 @@ async function startBot() {
             const hasImage = !!(msg.message?.imageMessage);
             const proof = hasImage ? '[Screenshot received]' : rawText;
             const od = st.orderData;
-            const orderRef = await fbPost('orders', {
+            await fbPost('orders', {
                 type: od.type, game: od.game || null, package: od.package || null,
                 uid: od.uid || null, item: od.item || null,
                 name: od.name, phone: od.phone, price: od.price,
                 paymentProof: proof, waNumber: waNum,
                 status: 'Pending', timestamp: new Date().toISOString()
             });
+            // send email notification to owner
+            await sendOrderEmail({ ...od, waNumber: waNum, timestamp: new Date().toISOString() });
             // save order ref to user profile for status notifications
             await saveUser(waNum, { lastOrderWa: sender });
             userStates[sender] = { step: 'RETURNING', name: od.name };
             await send(
                 `Order received ${od.name}! 🎉\n\n` +
-                (od.game ? `Game ${od.game}\nPackage ${od.package}\nUID ${od.uid}\n` : `Service ${od.item}\n`) +
-                `Amount ₹${od.price}\n\nWe will process it after verifying your payment. Usually takes 15 to 30 minutes. We will message you when it's done 🙌`
+                (od.game ? `Game: ${od.game}\nPackage: ${od.package}\nUID: ${od.uid}\n` : `Service: ${od.item}\n`) +
+                `Amount: ₹${od.price}\n\nWe will process it after verifying your payment. Usually takes 15–30 minutes. We will message you when it's done 🙌`
             );
             await delay(600);
-            await send(`Need anything else? Type restart for a new order or stop to end the chat`);
+            await send(
+                `⚠️ *Disclaimer:*\nIf your payment does NOT include your Name and Phone Number in the remark, your order cannot be verified and the amount may not be recoverable.\n\nPlease make sure you added: *${od.name} - ${od.phone}* in the remark before paying 🙏`
+            );
+            await delay(400);
+            await send(`Need anything else? Type *restart* for a new order or *stop* to end the chat`);
             return;
         }
 
@@ -421,7 +530,7 @@ async function startBot() {
                     if (clean) await send(clean);
                     await delay(500);
                     userStates[sender] = { step: 'PICK_CATEGORY' };
-                    await send(`What do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up`);
+                    await send(`What do you want to order?\n\n*1* General\n*2* Panels\n*3* Diamond Top-Up\n*4* Buy This Bot`);
                 } else {
                     await send(aiReply);
                 }

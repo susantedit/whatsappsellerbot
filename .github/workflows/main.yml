@@ -17,6 +17,13 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Restore WhatsApp Session
+        uses: actions/cache@v4
+        with:
+          path: session_data
+          key: whatsapp-session-${{ runner.os }}
+          restore-keys: whatsapp-session-
+
       - name: Install Dependencies
         run: npm install
 
@@ -25,3 +32,10 @@ jobs:
           FIREBASE_URL: ${{ secrets.FIREBASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm start
+
+      - name: Save WhatsApp Session
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: session_data
+          key: whatsapp-session-${{ runner.os }}

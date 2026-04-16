@@ -110,13 +110,13 @@ if (!empty($gate_pass)) {
 // SECURITY: Firebase config loaded from environment variables.
 // ============================================================
 $firebaseConfig = [
-  "apiKey"            => getenv('FIREBASE_API_KEY'),
-  "authDomain"        => getenv('FIREBASE_AUTH_DOMAIN'),
-  "databaseURL"       => getenv('FIREBASE_DATABASE_URL'),
-  "projectId"         => getenv('FIREBASE_PROJECT_ID'),
-  "storageBucket"     => getenv('FIREBASE_STORAGE_BUCKET'),
-  "messagingSenderId" => getenv('FIREBASE_MESSAGING_SENDER_ID'),
-  "appId"             => getenv('FIREBASE_APP_ID')
+  "apiKey"            => env('FIREBASE_API_KEY'),
+  "authDomain"        => env('FIREBASE_AUTH_DOMAIN'),
+  "databaseURL"       => env('FIREBASE_DATABASE_URL'),
+  "projectId"         => env('FIREBASE_PROJECT_ID'),
+  "storageBucket"     => env('FIREBASE_STORAGE_BUCKET'),
+  "messagingSenderId" => env('FIREBASE_MESSAGING_SENDER_ID'),
+  "appId"             => env('FIREBASE_APP_ID'),
 ];
 
 // ── Admin login rate limiting (server-side) ───────────────────
@@ -624,10 +624,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             <!-- SERVICES -->
             <div id="services" class="section">
                 <div class="header-flex">
-                    <h1>Services</h1>
-                    <button class="btn-add" id="openServiceModal"><i class="fas fa-plus"></i> Add Service</button>
+                    <h1>Services / Panels</h1>
+                    <button class="btn-add" id="openServiceModal"><i class="fas fa-plus"></i> Add Panel</button>
                 </div>
-                <div class="menu-grid" id="servicesGrid"></div>
+                <div id="servicesContainer"></div>
             </div>
 
             <!-- SETTINGS -->
@@ -714,11 +714,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
     <div id="serviceModal" class="modal">
         <div class="modal-content">
             <span class="close-modal">&times;</span>
-            <h2 style="margin-bottom:25px;">Add Service</h2>
-            <input type="text" id="serviceName" placeholder="Service Name" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:10px;">
-            <input type="number" id="servicePrice" placeholder="Price (₹)" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:10px;">
-            <input type="text" id="serviceDesc" placeholder="Short description" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:20px;">
-            <button class="btn-add" id="saveServiceBtn" style="width:100%;justify-content:center;">Save Service</button>
+            <h2 style="margin-bottom:25px;">Add Panel / Service</h2>
+            <input type="text" id="serviceName" placeholder="Panel Name (e.g. DRIP CLIENT)" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:10px;">
+            <input type="text" id="serviceDesc" placeholder="Short description (e.g. Auto headshot, antiban)" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:20px;">
+            <button class="btn-add" id="saveServiceBtn" style="width:100%;justify-content:center;">Save Panel</button>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD SERVICE PACKAGE -->
+    <div id="svcPkgModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 style="margin-bottom:5px;">Add Package</h2>
+            <p id="svcPkgLabel" style="color:var(--text-muted);margin-bottom:20px;font-weight:600;"></p>
+            <input type="text" id="svcPkgDuration" placeholder="Duration (e.g. 1 Day / 3 Days / 7 Days)" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:10px;">
+            <input type="number" id="svcPkgPrice" placeholder="Price (₹)" class="login-box" style="box-shadow:none;padding:12px;margin-bottom:20px;">
+            <button class="btn-add" id="saveSvcPkgBtn" style="width:100%;justify-content:center;">Save Package</button>
         </div>
     </div>
 
@@ -948,9 +959,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                         </div>`).join('');
 
                     container.innerHTML += `
-                        <div style="background:white;border-radius:20px;border:1px solid var(--border);padding:24px;margin-bottom:20px;">
+                        <div style="background:#111;border-radius:12px;border:1px solid var(--border);padding:20px;margin-bottom:16px;">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                                <h3 style="margin:0;font-size:1.2rem;">🎮 ${game.name}</h3>
+                                <h3 style="margin:0;font-size:1.1rem;color:#fff;font-family:'Orbitron',sans-serif;letter-spacing:1px;">🎮 ${game.name}</h3>
                                 <div style="display:flex;gap:10px;">
                                     <button class="btn-add" style="padding:8px 16px;font-size:0.85rem;" onclick="openPkgModal('${gameId}','${game.name}')">
                                         <i class="fas fa-plus"></i> Add Package
@@ -999,17 +1010,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
         // ── SERVICES ────────────────────────────────────────────
         function loadServices() {
             db.ref('services').on('value', snap => {
-                const grid = $('servicesGrid');
-                grid.innerHTML = '';
-                snap.forEach(child => {
-                    const s = child.val();
-                    grid.innerHTML += `
-                        <div class="admin-card" style="padding:20px;">
-                            <button class="delete-btn" onclick="deleteItem('services','${child.key}')"><i class="fas fa-trash"></i></button>
-                            <div style="font-size:2rem;margin-bottom:10px;">🛠️</div>
-                            <h4 style="margin:0 0 5px;">${s.name}</h4>
-                            <p style="margin:0 0 8px;color:var(--text-muted);font-size:0.85rem;">${s.description || ''}</p>
-                            <span style="font-weight:800;color:var(--primary)">₹${s.price}</span>
+                const container = $('servicesContainer');
+                container.innerHTML = '';
+                snap.forEach(svcSnap => {
+                    const svc = svcSnap.val();
+                    const svcId = svcSnap.key;
+                    const packages = svc.packages
+                        ? Object.keys(svc.packages).map(k => ({ id: k, ...svc.packages[k] }))
+                        : [];
+
+                    const pkgHtml = packages.map(p => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+                            <span style="font-weight:600">${p.label}</span>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <span style="font-weight:800;color:var(--primary)">₹${p.price}</span>
+                                <button onclick="deleteItem('services/${svcId}/packages','${p.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>`).join('');
+
+                    container.innerHTML += `
+                        <div style="background:#111;border-radius:12px;border:1px solid var(--border);padding:20px;margin-bottom:16px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                                <div>
+                                    <h3 style="margin:0 0 4px;font-size:1.1rem;color:#fff;font-family:'Orbitron',sans-serif;letter-spacing:1px;">🛠️ ${svc.name}</h3>
+                                    ${svc.description ? `<p style="margin:0;color:var(--text-muted);font-size:0.85rem;">${svc.description}</p>` : ''}
+                                </div>
+                                <div style="display:flex;gap:10px;">
+                                    <button class="btn-add" style="padding:8px 16px;font-size:0.85rem;" onclick="openSvcPkgModal('${svcId}','${svc.name}')">
+                                        <i class="fas fa-plus"></i> Add Package
+                                    </button>
+                                    <button onclick="deleteItem('services','${svcId}')" style="background:var(--danger);color:white;border:none;padding:8px 14px;border-radius:10px;cursor:pointer;">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            ${pkgHtml || '<p style="color:var(--text-muted);font-size:0.9rem;">No packages yet. Add one above.</p>'}
                         </div>`;
                 });
             });
@@ -1019,12 +1054,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
         $('openServiceModal').onclick = () => serviceM.style.display = 'flex';
         $('saveServiceBtn').onclick = () => {
             const name        = sanitize($('serviceName').value);
-            const price       = sanitizeNum($('servicePrice').value);
             const description = sanitize($('serviceDesc').value);
-            if (!name || price === null) return;
-            db.ref('services').push({ name, price, description }).then(() => {
+            if (!name) return;
+            db.ref('services').push({ name, description }).then(() => {
                 serviceM.style.display = 'none';
-                $('serviceName').value = ''; $('servicePrice').value = ''; $('serviceDesc').value = '';
+                $('serviceName').value = ''; $('serviceDesc').value = '';
+            });
+        };
+
+        // Service package modal
+        let _svcPkgId = null;
+        const svcPkgM = $('svcPkgModal');
+        window.openSvcPkgModal = (svcId, svcName) => {
+            _svcPkgId = svcId;
+            $('svcPkgLabel').textContent = svcName;
+            $('svcPkgDuration').value = ''; $('svcPkgPrice').value = '';
+            svcPkgM.style.display = 'flex';
+        };
+        $('saveSvcPkgBtn').onclick = () => {
+            const label = sanitize($('svcPkgDuration').value);
+            const price = sanitizeNum($('svcPkgPrice').value);
+            if (!label || price === null || !_svcPkgId) return;
+            db.ref(`services/${_svcPkgId}/packages`).push({ label, price }).then(() => {
+                svcPkgM.style.display = 'none';
             });
         };
 
@@ -1094,23 +1146,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             status.textContent = 'Loading...'; status.style.display = 'block';
 
             const defaultServices = [
-                { name: 'DRIP CLIENT NON ROOT', description: 'Free Fire hack panel', price: '280',
+                { name: 'DRIP CLIENT NON ROOT', description: 'Free Fire panel — Auto headshot, aimbot, antiban', price: '299',
                   packages: [
-                    { label: '1 Day',  price: '280' }, { label: '3 Days', price: '450' },
-                    { label: '7 Days', price: '850' }, { label: '15 Days', price: '1250' },
-                    { label: '30 Days', price: '1850' }
+                    { label: '1 Day',   price: '299'  },
+                    { label: '3 Days',  price: '499'  },
+                    { label: '7 Days',  price: '799'  },
+                    { label: '15 Days', price: '889'  },
+                    { label: '30 Days', price: '1399' }
                   ]
                 },
-                { name: 'HG CHEATS', description: 'Free Fire hack panel', price: '230',
+                { name: 'HG CHEATS', description: 'Free Fire panel — Headshot, wallhack, speed', price: '399',
                   packages: [
-                    { label: '1 Day',  price: '230' }, { label: '7 Days', price: '800' },
-                    { label: '15 Days', price: '1150' }, { label: '30 Days', price: '1650' }
+                    { label: '1 Day',   price: '399'  },
+                    { label: '3 Days',  price: '599'  },
+                    { label: '7 Days',  price: '1199' },
+                    { label: '15 Days', price: '1599' },
+                    { label: '30 Days', price: '1999' }
                   ]
                 },
-                { name: 'IOS FLUORITE', description: 'iOS hack panel', price: '500',
+                { name: 'GUILD GLORYBOT', description: 'Free Fire guild bot panel', price: '799',
                   packages: [
-                    { label: '1 Day', price: '500' }, { label: '3 Days', price: '1000' },
-                    { label: '7 Days', price: '1500' }, { label: '30 Days', price: '4000' }
+                    { label: '1 Squad',  price: '799'  },
+                    { label: '2 Squads', price: '999' },
+                    { label: '3 Squads', price: '1299' },
+                    { label: '4 Squads', price: '1499' }
+                  ]
+                },
+                { name: 'PATO TEAMS', description: 'Free Fire panel', price: '1000',
+                  packages: [
+                    { label: '3 Days',  price: '999' },
+                    { label: '7 Days',  price: '1199' },
+                    { label: '15 Days', price: '1599' },
+                    { label: '30 Days', price: '1899' }
+                  ]
+                },
+                { name: 'IOS FLUORITE', description: 'iOS Free Fire panel — Certificate included', price: '600',
+                  packages: [
+                    { label: '1 Days',  price: '699'  },
+                    { label: '7 Days',  price: '1499' },
+                    { label: '30 Days', price: '3999' }
                   ]
                 }
             ];
@@ -1131,10 +1205,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                 }
             ];
 
-            // Add services (panels)
+            // Add services (panels) with packages
             for (const svc of defaultServices) {
                 const ref = db.ref('services').push();
-                await ref.set({ name: svc.name, description: svc.description, price: svc.price });
+                await ref.set({ name: svc.name, description: svc.description, price: svc.packages[0].price });
+                for (const pkg of svc.packages) {
+                    await ref.child('packages').push(pkg);
+                }
             }
 
             // Add games with packages

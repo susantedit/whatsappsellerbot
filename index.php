@@ -17,13 +17,13 @@ if (file_exists($envFile)) {
 function env($k, $d = '') { return $_ENV[$k] ?? getenv($k) ?: $d; }
 
 $firebaseConfig = [
-  "apiKey"            => getenv('FIREBASE_API_KEY'),
-  "authDomain"        => getenv('FIREBASE_AUTH_DOMAIN'),
-  "databaseURL"       => getenv('FIREBASE_DATABASE_URL'),
-  "projectId"         => getenv('FIREBASE_PROJECT_ID'),
-  "storageBucket"     => getenv('FIREBASE_STORAGE_BUCKET'),
-  "messagingSenderId" => getenv('FIREBASE_MESSAGING_SENDER_ID'),
-  "appId"             => getenv('FIREBASE_APP_ID')
+  "apiKey"            => env('FIREBASE_API_KEY'),
+  "authDomain"        => env('FIREBASE_AUTH_DOMAIN'),
+  "databaseURL"       => env('FIREBASE_DATABASE_URL'),
+  "projectId"         => env('FIREBASE_PROJECT_ID'),
+  "storageBucket"     => env('FIREBASE_STORAGE_BUCKET'),
+  "messagingSenderId" => env('FIREBASE_MESSAGING_SENDER_ID'),
+  "appId"             => env('FIREBASE_APP_ID'),
 ];
 ?>
 <!DOCTYPE html>
@@ -243,6 +243,9 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
       <div class="cat" data-cat="custom">
         <div class="cat-icon">🔧</div><p>Custom</p>
       </div>
+      <div class="cat" data-cat="bot" onclick="openBotModal()">
+        <div class="cat-icon">🤖</div><p>Buy Bot</p>
+      </div>
     </div>
 
     <!-- Promo -->
@@ -291,6 +294,55 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
 
 </div><!-- end appPage -->
 
+<!-- ══ BOT PURCHASE MODAL ══ -->
+<div id="botModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200;overflow-y:auto;padding:20px;">
+  <div style="max-width:420px;margin:0 auto;background:#111;border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 0 40px var(--red-glow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-family:'Orbitron',sans-serif;font-size:0.9rem;letter-spacing:2px;color:var(--red);">🤖 BUY THIS BOT</div>
+      <span onclick="closeBotModal()" style="cursor:pointer;color:var(--muted);font-size:1.4rem;">&times;</span>
+    </div>
+
+    <!-- Info step -->
+    <div id="botStepInfo">
+      <div style="background:#1a1a1a;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;font-size:0.9rem;line-height:2;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:0.8rem;color:var(--red);margin-bottom:10px;letter-spacing:1px;">WHAT YOU GET</div>
+        ✅ Full WhatsApp bot setup<br>
+        ✅ Admin panel included<br>
+        ✅ Firebase database<br>
+        ✅ AI-powered replies<br>
+        ✅ 12 months support
+      </div>
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="color:var(--muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:4px;">SETUP FEE</div>
+        <div style="font-family:'Orbitron',sans-serif;font-size:2rem;color:var(--red);font-weight:900;">Rs. 1,500</div>
+        <div style="color:var(--muted);font-size:0.8rem;">One-time payment · 12 months support</div>
+      </div>
+      <button class="btn solid" onclick="showBotPayment()"><i class="fas fa-arrow-right"></i> PROCEED TO PAYMENT</button>
+    </div>
+
+    <!-- Payment step -->
+    <div id="botStepPayment" style="display:none;">
+      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:12px;">SCAN & PAY</p>
+      <div id="botQrWrap" style="text-align:center;margin-bottom:16px;"></div>
+      <div id="botPayInfo" style="background:#1a1a1a;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;font-size:0.9rem;line-height:1.8;"></div>
+      <p style="color:#f59e0b;font-size:0.8rem;margin-bottom:8px;">⚠️ Write your Name + Phone in payment remarks</p>
+      <p style="color:var(--muted);font-size:0.78rem;margin-bottom:14px;">Example: Susant - 98XXXXXXXX</p>
+      <input id="botName" class="inp" type="text" placeholder="Your Full Name">
+      <input id="botPhone" class="inp" type="tel" placeholder="Your Phone Number">
+      <button class="btn solid" onclick="confirmBotPayment()"><i class="fas fa-check"></i> I HAVE PAID</button>
+    </div>
+
+    <!-- Done step -->
+    <div id="botStepDone" style="display:none;text-align:center;padding:20px 0;">
+      <div style="font-size:3rem;margin-bottom:12px;">✅</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:1rem;color:var(--red);letter-spacing:2px;margin-bottom:8px;">REQUEST SENT</div>
+      <p style="color:var(--muted);font-size:0.9rem;">Susant will contact you shortly to set up your bot. Thank you! 🙏</p>
+      <p style="color:#f59e0b;font-size:0.78rem;margin-top:12px;">⚠️ Disclaimer: Money will not be refunded if payment remark does not include your Name and Phone Number.</p>
+      <button class="btn solid" style="margin-top:20px;" onclick="closeBotModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ PURCHASE MODAL ══ -->
 <div id="buyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200;overflow-y:auto;padding:20px;">
   <div style="max-width:420px;margin:0 auto;background:#111;border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 0 40px var(--red-glow);">
@@ -305,28 +357,28 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
       <div id="packageList"></div>
     </div>
 
-    <!-- Step 2: Enter UID (for topup) -->
+    <!-- Step 2: Payment QR (shown right after package pick) -->
+    <div id="stepPayment" style="display:none;">
+      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:12px;">PAYMENT</p>
+      <div id="qrImageWrap" style="text-align:center;margin-bottom:16px;"></div>
+      <div id="paymentInfo" style="background:#1a1a1a;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;font-size:0.9rem;line-height:1.8;"></div>
+      <p style="color:#f59e0b;font-size:0.8rem;margin-bottom:14px;">⚠️ Write your Name + Phone in payment remarks</p>
+      <button class="btn solid" onclick="confirmPayment()"><i class="fas fa-check"></i> I HAVE PAID</button>
+    </div>
+
+    <!-- Step 3: Enter UID (for topup) -->
     <div id="stepUID" style="display:none;">
       <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:8px;">YOUR GAME UID</p>
       <input id="buyUID" class="inp" type="text" placeholder="Enter your game UID">
       <button class="btn solid" onclick="goToDetails()">NEXT</button>
     </div>
 
-    <!-- Step 3: Name & Phone -->
+    <!-- Step 4: Name & Phone -->
     <div id="stepDetails" style="display:none;">
       <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:8px;">YOUR DETAILS</p>
       <input id="buyName" class="inp" type="text" placeholder="Full Name">
       <input id="buyPhone" class="inp" type="tel" placeholder="Phone Number">
-      <button class="btn solid" onclick="goToPayment()">NEXT</button>
-    </div>
-
-    <!-- Step 4: Payment -->
-    <div id="stepPayment" style="display:none;">
-      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:12px;">PAYMENT</p>
-      <div id="qrImageWrap" style="text-align:center;margin-bottom:16px;"></div>
-      <div id="paymentInfo" style="background:#1a1a1a;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;font-size:0.9rem;line-height:1.8;"></div>
-      <p style="color:#f59e0b;font-size:0.8rem;margin-bottom:14px;">⚠️ Write your name and phone in payment remarks</p>
-      <button class="btn solid" onclick="confirmPayment()"><i class="fas fa-check"></i> I HAVE PAID</button>
+      <button class="btn solid" onclick="finalSubmit()">SUBMIT ORDER</button>
     </div>
 
     <!-- Step 5: Done -->
@@ -334,6 +386,7 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
       <div style="font-size:3rem;margin-bottom:12px;">✅</div>
       <div style="font-family:'Orbitron',sans-serif;font-size:1rem;color:var(--red);letter-spacing:2px;margin-bottom:8px;">ORDER PLACED</div>
       <p style="color:var(--muted);font-size:0.9rem;">Your order has been received. We will process it after verifying payment. Usually 15-30 minutes.</p>
+      <p style="color:#f59e0b;font-size:0.78rem;margin-top:10px;">⚠️ Disclaimer: Money will not be refunded if payment remark does not include your Name and Phone Number.</p>
       <button class="btn solid" style="margin-top:20px;" onclick="closeBuyModal()">CLOSE</button>
     </div>
   </div>
@@ -412,7 +465,7 @@ document.getElementById('registerBtn').onclick = () => {
 document.getElementById('gotoRegister').onclick = e => { e.preventDefault(); showPage('registerPage'); };
 document.getElementById('gotoLogin').onclick    = e => { e.preventDefault(); showPage('loginPage'); };
 
-// ── Logout ────────────────────────────────────────────────────
+// ── Logout ───────────────────────────────────────────────────
 function doLogout() { auth.signOut(); }
 
 // ── Load Games ────────────────────────────────────────────────
@@ -520,18 +573,17 @@ let _order = {};
 function openBuyModal(type, id, name, packages, fixedPrice) {
     _order = { type, id, name };
     document.getElementById('modalTitle').textContent = name.toUpperCase();
-    // reset all steps
     ['stepPackage','stepUID','stepDetails','stepPayment','stepDone'].forEach(s => {
         document.getElementById(s).style.display = 'none';
     });
 
     if (type === 'service') {
-        // service has fixed price, skip package selection
         _order.price = fixedPrice;
         _order.item  = name;
-        document.getElementById('stepDetails').style.display = 'block';
+        // service: show QR immediately
+        showPaymentStep();
     } else {
-        // topup — show package list
+        // topup — show package list first
         const list = document.getElementById('packageList');
         list.innerHTML = '';
         if (packages) {
@@ -541,11 +593,12 @@ function openBuyModal(type, id, name, packages, fixedPrice) {
                 btn.style.cssText = 'width:100%;margin-bottom:8px;text-align:left;padding:12px 16px;display:flex;justify-content:space-between;';
                 btn.innerHTML = `<span>${pkg.label}</span><span style="color:var(--red);font-weight:800;">₹${pkg.price}</span>`;
                 btn.onclick = () => {
-                    _order.package = pkg.label;
+                    _order.package   = pkg.label;
                     _order.packageId = pid;
-                    _order.price = pkg.price;
+                    _order.price     = pkg.price;
                     document.getElementById('stepPackage').style.display = 'none';
-                    document.getElementById('stepUID').style.display = 'block';
+                    // show QR right after package selection
+                    showPaymentStep();
                 };
                 list.appendChild(btn);
             });
@@ -555,29 +608,9 @@ function openBuyModal(type, id, name, packages, fixedPrice) {
     document.getElementById('buyModal').style.display = 'block';
 }
 
-function closeBuyModal() {
-    document.getElementById('buyModal').style.display = 'none';
-    _order = {};
-}
-
-function goToDetails() {
-    const uid = document.getElementById('buyUID').value.trim();
-    if (!uid) { alert('Please enter your game UID'); return; }
-    _order.uid = uid;
-    document.getElementById('stepUID').style.display = 'none';
-    document.getElementById('stepDetails').style.display = 'block';
-}
-
-function goToPayment() {
-    const name  = document.getElementById('buyName').value.trim();
-    const phone = document.getElementById('buyPhone').value.trim();
-    if (!name || !phone) { alert('Please fill in your name and phone'); return; }
-    _order.name  = name;
-    _order.phone = phone;
-
-    // load payment info from Firebase settings
+function showPaymentStep() {
     db.ref('settings').once('value', snap => {
-        const s = snap.val() || {};
+        const s   = snap.val() || {};
         const upi = s.upi || '';
         const qr  = s.qr_image_url || '';
 
@@ -585,39 +618,120 @@ function goToPayment() {
             `<div style="margin-bottom:6px;color:var(--muted);font-size:0.8rem;letter-spacing:1px;">AMOUNT</div>` +
             `<div style="font-family:'Orbitron',sans-serif;font-size:1.4rem;color:var(--red);margin-bottom:12px;">₹${_order.price}</div>` +
             (upi ? `<div style="color:var(--muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:4px;">UPI ID</div><div style="font-weight:700;color:#fff;margin-bottom:8px;">${upi}</div>` : '') +
-            `<div style="color:var(--muted);font-size:0.8rem;">Remark: ${name} ${phone}</div>`;
+            `<div style="color:var(--muted);font-size:0.8rem;">After paying, click "I HAVE PAID" and fill your details</div>`;
 
-        const qrWrap = document.getElementById('qrImageWrap');
-        qrWrap.innerHTML = qr
+        document.getElementById('qrImageWrap').innerHTML = qr
             ? `<img src="${qr}" style="max-width:180px;border-radius:8px;border:2px solid var(--border);">`
             : '';
 
-        document.getElementById('stepDetails').style.display = 'none';
         document.getElementById('stepPayment').style.display = 'block';
     });
 }
 
+function closeBuyModal() {
+    document.getElementById('buyModal').style.display = 'none';
+    _order = {};
+}
+
 function confirmPayment() {
-    const user = auth.currentUser;
+    // after "I HAVE PAID" — ask for UID (topup) or name+phone (service)
+    document.getElementById('stepPayment').style.display = 'none';
+    if (_order.type === 'topup') {
+        document.getElementById('buyUID').value = '';
+        document.getElementById('stepUID').style.display = 'block';
+    } else {
+        document.getElementById('buyName').value  = '';
+        document.getElementById('buyPhone').value = '';
+        document.getElementById('stepDetails').style.display = 'block';
+    }
+}
+
+function goToDetails() {
+    const uid = document.getElementById('buyUID').value.trim();
+    if (!uid) { alert('Please enter your game UID'); return; }
+    _order.uid = uid;
+    document.getElementById('stepUID').style.display = 'none';
+    document.getElementById('buyName').value  = '';
+    document.getElementById('buyPhone').value = '';
+    document.getElementById('stepDetails').style.display = 'block';
+}
+
+function finalSubmit() {
+    const name  = document.getElementById('buyName').value.trim();
+    const phone = document.getElementById('buyPhone').value.trim();
+    if (!name || !phone) { alert('Please fill in your name and phone'); return; }
+    _order.name  = name;
+    _order.phone = phone;
+
+    const user  = auth.currentUser;
     const order = {
         type:         _order.type,
-        game:         _order.name || null,
+        game:         _order.type === 'topup' ? _order.name : null,
         package:      _order.package || null,
         uid:          _order.uid || null,
         item:         _order.item || null,
-        name:         _order.name,
-        phone:        _order.phone,
+        name,
+        phone,
         price:        _order.price,
         paymentProof: 'Web order - payment claimed',
-        waNumber:     _order.phone,
+        waNumber:     phone,
         userEmail:    user ? user.email : 'guest',
         source:       'web',
         status:       'Pending',
         timestamp:    new Date().toISOString()
     };
     db.ref('orders').push(order).then(() => {
-        document.getElementById('stepPayment').style.display = 'none';
+        document.getElementById('stepDetails').style.display = 'none';
         document.getElementById('stepDone').style.display = 'block';
+    });
+}
+
+// ── Bot modal ─────────────────────────────────────────────────
+function openBotModal() {
+    document.getElementById('botStepInfo').style.display    = 'block';
+    document.getElementById('botStepPayment').style.display = 'none';
+    document.getElementById('botStepDone').style.display    = 'none';
+    document.getElementById('botModal').style.display       = 'block';
+}
+
+function closeBotModal() {
+    document.getElementById('botModal').style.display = 'none';
+}
+
+function showBotPayment() {
+    db.ref('settings').once('value', snap => {
+        const s   = snap.val() || {};
+        const upi = s.upi || '';
+        const qr  = s.qr_image_url || '';
+
+        document.getElementById('botPayInfo').innerHTML =
+            `<div style="margin-bottom:6px;color:var(--muted);font-size:0.8rem;letter-spacing:1px;">AMOUNT</div>` +
+            `<div style="font-family:'Orbitron',sans-serif;font-size:1.4rem;color:var(--red);margin-bottom:12px;">Rs. 1,500</div>` +
+            (upi ? `<div style="color:var(--muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:4px;">UPI ID</div><div style="font-weight:700;color:#fff;">${upi}</div>` : '');
+
+        document.getElementById('botQrWrap').innerHTML = qr
+            ? `<img src="${qr}" style="max-width:180px;border-radius:8px;border:2px solid var(--border);">`
+            : '';
+
+        document.getElementById('botStepInfo').style.display    = 'none';
+        document.getElementById('botStepPayment').style.display = 'block';
+    });
+}
+
+function confirmBotPayment() {
+    const name  = document.getElementById('botName').value.trim();
+    const phone = document.getElementById('botPhone').value.trim();
+    if (!name || !phone) { alert('Please fill in your name and phone'); return; }
+
+    const user  = auth.currentUser;
+    db.ref('orders').push({
+        type: 'bot_setup', item: 'WhatsApp Bot Setup 12 months', price: 1500,
+        name, phone, paymentProof: 'Web order - payment claimed',
+        waNumber: phone, userEmail: user ? user.email : 'guest',
+        source: 'web', status: 'Pending', timestamp: new Date().toISOString()
+    }).then(() => {
+        document.getElementById('botStepPayment').style.display = 'none';
+        document.getElementById('botStepDone').style.display    = 'block';
     });
 }
 </script>
