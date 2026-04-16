@@ -650,7 +650,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                     <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
                         <p style="color:var(--text-muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:12px;">SEED DEFAULT DATA — loads example panels and packages you can edit</p>
                         <button class="btn-add" id="seedDataBtn" style="width:100%;justify-content:center;border-color:#f59e0b;color:#f59e0b;">
-                            <i class="fas fa-database"></i> Load Default Panels & Packages
+                            <i class="fas fa-database"></i> Reset & Reload Default Panels & Packages
                         </button>
                         <p id="seedStatus" style="color:#f59e0b;font-weight:700;margin-top:10px;display:none;"></p>
                     </div>
@@ -1147,9 +1147,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
 
         // ── SEED DEFAULT DATA ─────────────────────────────────────
         $('seedDataBtn').onclick = async () => {
-            if (!confirm('This will add default panels and packages. Existing data will NOT be deleted. Continue?')) return;
+            if (!confirm('This will DELETE existing games & services and reload fresh default data. Continue?')) return;
             const status = $('seedStatus');
-            status.textContent = 'Loading...'; status.style.display = 'block';
+            status.textContent = 'Clearing old data...'; status.style.display = 'block';
+
+            // clear existing first
+            await db.ref('games').remove();
+            await db.ref('services').remove();
+
+            status.textContent = 'Loading fresh data...';
 
             const defaultServices = [
                 { name: 'DRIP CLIENT NON ROOT', description: 'Free Fire panel — Auto headshot, aimbot, antiban', price: '299',
@@ -1243,7 +1249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                 }
             }
 
-            status.textContent = '✅ Default data loaded! Go to Games and Services to edit prices.';
+            status.textContent = '✅ Data reset and reloaded! All prices are now up to date.';
             setTimeout(() => status.style.display = 'none', 5000);
         };
         function loadCustomers() {

@@ -498,7 +498,7 @@ async function startBot() {
                     return;
                 }
             }
-            await send(`Sorry I couldn't answer that 😅 Type *menu* to go back`);
+            await send(`For pricing and details:\n\n🎯 *Panels* — type *2* to see all panels with prices\n💎 *Top-Up* — type *3* to see diamond packages\n\nOr contact directly: wa.me/9779708838261`);
             return;
         }
 
@@ -771,7 +771,7 @@ async function startBot() {
             }
         }
 
-        await send(`Didn't quite get that 😅 Type help to see options or restart to start over`);
+        await send(`Type *menu* to see all options, or ask me anything about panels and top-up 😊`);
     });
 }
 
