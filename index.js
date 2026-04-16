@@ -638,8 +638,8 @@ async function startBot() {
                 await send(`Please reply with:\n*D1* — 1 Day\n*D2* — 3 Days\n*D3* — 7 Days\n*D4* — 15 Days\n*D5* — 30 Days`);
                 return;
             }
-            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} — ${duration}`, price: st.service.price || 0 } };
-            await send(`${st.service.name} for ${duration} ✅\n\nWhat's your name?`);
+            userStates[sender] = { ...st, step: 'ASK_NAME', orderData: { type: 'service', item: `${st.service.name} — ${duration}`, price: 0 } };
+            await send(`${st.service.name} for ${duration} noted ✅\n\nPrice will be confirmed by Susant after payment verification.\n\nWhat's your name?`);
             return;
         }
 
@@ -686,9 +686,11 @@ async function startBot() {
             const qrUrl = settings?.qr_image_url || null;
             const od = st.orderData;
             const paymentMsg =
-                `Payment details 💳\n\nAmount ₹${od.price}` +
-                (upi ? `\nUPI ${upi}` : '') +
-                `\n\nWhen paying please write your name and phone number in the remarks like this: ${od.name} ${rawText}\n\nAfter paying send the screenshot here 📸`;
+                `💳 Payment Details\n\nAmount: ₹${od.price}` +
+                (upi ? `\nUPI: ${upi}` : '') +
+                `\n\nRemark: ${od.name} - ${rawText}\n\nAfter paying send the screenshot here 📸`;
+
+            // send QR
             if (qrUrl) {
                 await sock.sendPresenceUpdate('composing', sender);
                 await delay(800);
@@ -700,8 +702,20 @@ async function startBot() {
             } else {
                 await send(paymentMsg);
             }
-            await delay(700);
-            await send(`One important thing — if you don't write your name and phone in the payment remarks your order might not get verified. Please make sure you do that before paying 🙏`);
+
+            // send price list image with disclaimer
+            await delay(800);
+            if (fs.existsSync('./pricelist.jpg')) {
+                await sock.sendPresenceUpdate('composing', sender);
+                await delay(600);
+                await sock.sendMessage(sender, {
+                    image: fs.readFileSync('./pricelist.jpg'),
+                    caption: `⚠️ *Important:* Sometimes the bot may show incorrect prices.\nPlease pay according to this price list only 🙏\n\nIf the amount shown above doesn't match this list, pay the amount from this list.`
+                });
+            }
+
+            await delay(600);
+            await send(`Make sure to write *${od.name} - ${rawText}* in the payment remark, otherwise your order cannot be verified 🙏`);
             return;
         }
 
