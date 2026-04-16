@@ -1158,45 +1158,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             status.textContent = 'Loading fresh data...';
 
             const defaultServices = [
-                { name: 'DRIP CLIENT NON ROOT', description: 'Free Fire panel — Auto headshot, aimbot, antiban', price: '299',
+                { name: 'DRIP CLIENT', description: 'Free Fire panel — Auto headshot, aimbot, antiban', price: '299',
                   packages: [
                     { label: '1 Day',   price: '299'  },
                     { label: '3 Days',  price: '499'  },
                     { label: '7 Days',  price: '799'  },
-                    { label: '15 Days', price: '889'  },
+                    { label: '15 Days', price: '899'  },
                     { label: '30 Days', price: '1399' }
                   ]
                 },
                 { name: 'HG CHEATS', description: 'Free Fire panel — Headshot, wallhack, speed', price: '399',
                   packages: [
                     { label: '1 Day',   price: '399'  },
-                    { label: '3 Days',  price: '599'  },
-                    { label: '7 Days',  price: '1199' },
-                    { label: '15 Days', price: '1599' },
-                    { label: '30 Days', price: '1999' }
-                  ]
-                },
-                { name: 'GUILD GLORYBOT', description: 'Free Fire guild bot panel', price: '799',
-                  packages: [
-                    { label: '1 Squad',  price: '799'  },
-                    { label: '2 Squads', price: '999' },
-                    { label: '3 Squads', price: '1299' },
-                    { label: '4 Squads', price: '1499' }
-                  ]
-                },
-                { name: 'PATO TEAMS', description: 'Free Fire panel', price: '1000',
-                  packages: [
-                    { label: '3 Days',  price: '999' },
+                    { label: '3 Days',  price: '699'  },
                     { label: '7 Days',  price: '1199' },
                     { label: '15 Days', price: '1599' },
                     { label: '30 Days', price: '1899' }
                   ]
                 },
-                { name: 'IOS FLUORITE', description: 'iOS Free Fire panel — Certificate included', price: '600',
+                { name: 'PATO TEAMS', description: 'Free Fire panel', price: '699',
                   packages: [
-                    { label: '1 Days',  price: '699'  },
+                    { label: '3 Days',  price: '699'  },
+                    { label: '7 Days',  price: '1199' },
+                    { label: '15 Days', price: '1599' },
+                    { label: '30 Days', price: '1899' }
+                  ]
+                },
+                { name: 'IOS FLUORITE', description: 'iOS Free Fire panel — Certificate included', price: '699',
+                  packages: [
+                    { label: '1 Day',   price: '699'  },
                     { label: '7 Days',  price: '1499' },
                     { label: '30 Days', price: '3999' }
+                  ]
+                },
+                { name: 'GUILD GLORYBOT', description: 'Free Fire guild bot — squad based pricing', price: '799',
+                  packages: [
+                    { label: '1 Squad',  price: '799'  },
+                    { label: '2 Squads', price: '999'  },
+                    { label: '3 Squads', price: '1299' },
+                    { label: '4 Squads', price: '1699' }
+                  ]
+                },
+                { name: 'RANK PUSHING', description: 'Fast rank boost — Rs.40 per 25 stars', price: '40',
+                  packages: [
+                    { label: '25 Stars',  price: '40'  },
+                    { label: '50 Stars',  price: '80'  },
+                    { label: '100 Stars', price: '160' },
+                    { label: '200 Stars', price: '320' },
+                    { label: '500 Stars', price: '800' }
                   ]
                 }
             ];
@@ -1215,10 +1224,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                     { label: '1090 Diamonds',  price: '950'  },
                     { label: '1240 Diamonds',  price: '1100' },
                     { label: '2530 Diamonds',  price: '2200' },
+                    { label: 'Weekly Lite',    price: '70'   },
                     { label: 'Weekly Member',  price: '220'  },
                     { label: 'Monthly Member', price: '1050' },
-                    { label: 'Weekly Lite',    price: '70'   },
-                    { label: 'Level Up Pass',  price: '795'  }
+                    { label: 'Level Up Pass',  price: '666'  }
                   ]
                 },
                 { name: 'PUBG Mobile',

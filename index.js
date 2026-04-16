@@ -324,7 +324,7 @@ async function startBot() {
 
         // ── Global AI for questions (anytime, any step) ───────────
         const orderSteps = ['ASK_NAME','ASK_PHONE','ASK_UID','SEND_PAYMENT','ASK_GAME_PHONE'];
-        const isMenuInput = /^[1-5]$/.test(t) || ['stop','exit','cancel','restart','start','hi','hello','hey','menu','help'].includes(t);
+        const isMenuInput = /^[1-6]$/.test(t) || ['stop','exit','cancel','restart','start','hi','hello','hey','menu','help'].includes(t);
         const curStep = userStates[sender]?.step;
         // trigger AI for anything that's not a plain menu number and not in a data-entry step
         if (GEMINI_KEY && !isMenuInput && !orderSteps.includes(curStep) && rawText.length > 1) {
@@ -368,7 +368,7 @@ async function startBot() {
         // ── New user ──────────────────────────────────────────────
         if (!userStates[sender]) {
             userStates[sender] = { step: 'PICK_CATEGORY' };
-            const menu = `*1* 💬 General — For regular messages\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🤖 Buy This Bot — Get your own WhatsApp bot like this\n*5* ❓ Ask a Question — Prices, how panels work, anything`;
+            const menu = `*1* 💬 General — For regular messages\n*2* 🎯 Panels — Free Fire hack panels (auto headshot, aimbot etc.)\n*3* 💎 Diamond Top-Up — Buy diamonds for Free Fire & other games\n*4* 🏆 Rank Pushing — Fast rank boost Rs.40 per 25 stars\n*5* 🤖 Buy This Bot — Get your own WhatsApp bot like this\n*6* ❓ Ask a Question — Prices, how panels work, anything`;
             const greeting = userData.name
                 ? `Hey ${userData.name}! Good to see you again 👋\n\nWhat can I help you with?\n\n${menu}`
                 : `👋 Welcome!\n\nPlease choose an option:\n\n${menu}\n\nReply with *1, 2, 3 or 4* 😊`;
@@ -380,7 +380,7 @@ async function startBot() {
         if (userStates[sender]?.step === 'RETURNING') {
             const name = userStates[sender].name || userData.name;
             userStates[sender] = { step: 'PICK_CATEGORY', name };
-            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot\n*5* ❓ Ask a Question`);
+            await send(`Hey ${name}! 👋 What do you need today?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🏆 Rank Pushing\n*5* 🤖 Buy This Bot\n*6* ❓ Ask a Question`);
             return;
         }
 
@@ -408,7 +408,22 @@ async function startBot() {
                 await send(`Here are all the panels 🎯\n\n${list}\n\nReply with the number you want`);
                 return;
             }
-            if (t === '4' || t.includes('bot') || t.includes('buy bot') || t.includes('setup')) {
+            if (t === '4' || t.includes('rank') || t.includes('push') || t.includes('star')) {
+                const data = await fbGet('services');
+                const services = toArray(data);
+                const rankSvc = services.find(s => s.name.toLowerCase().includes('rank'));
+                if (rankSvc) {
+                    const packages = rankSvc.packages ? Object.keys(rankSvc.packages).map(k => ({ id: k, ...rankSvc.packages[k] })) : [];
+                    userStates[sender] = { ...st, step: 'PICK_SERVICE_PKG', service: rankSvc, packages };
+                    const list = packages.map((p, i) => `*${i+1}.* ${p.label} — Rs.${p.price}`).join('\n');
+                    await send(`🏆 Rank Pushing\n\n${list}\n\nHow many stars do you want?`);
+                } else {
+                    await send(`🏆 Rank Pushing — Rs.40 per 25 stars\n\nHow many stars do you want?\nExample: type *25* for Rs.40, *50* for Rs.80\n\nSusant will contact you with details 🤝`);
+                    userStates[sender] = { ...st, step: 'OTHER_GAME' };
+                }
+                return;
+            }
+            if (t === '5' || t.includes('bot') || t.includes('buy bot') || t.includes('setup')) {
                 userStates[sender] = { ...st, step: 'BOT_INQUIRY' };
                 await send(
                     `🤖 *WhatsApp Bot Setup*\n\n` +
@@ -444,7 +459,7 @@ async function startBot() {
                 return;
             }
 
-            if (t === '5' || t.includes('ask') || t.includes('question') || t.includes('faq')) {
+            if (t === '6' || t.includes('ask') || t.includes('question') || t.includes('faq')) {
                 userStates[sender] = { ...st, step: 'ASK_QUESTION' };
                 await send(`Sure! Ask me anything 😊\n\nYou can ask about:\n• Panel prices & features\n• How top-up works\n• Which panel is best\n• Anything else about our services`);
                 return;
