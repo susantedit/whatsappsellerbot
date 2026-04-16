@@ -655,6 +655,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
                     </div>
                     <button class="btn-add" id="saveSettingsBtn" style="width:100%;justify-content:center;">Save Settings</button>
                     <p id="settingsSaved" style="color:var(--primary);font-weight:700;margin-top:12px;display:none;">✅ Saved!</p>
+                    <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+                        <p style="color:var(--text-muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:12px;">SEED DEFAULT DATA — loads example panels and packages you can edit</p>
+                        <button class="btn-add" id="seedDataBtn" style="width:100%;justify-content:center;border-color:#f59e0b;color:#f59e0b;">
+                            <i class="fas fa-database"></i> Load Default Panels & Packages
+                        </button>
+                        <p id="seedStatus" style="color:#f59e0b;font-weight:700;margin-top:10px;display:none;"></p>
+                    </div>
                 </div>
             </div>
 
@@ -1080,7 +1087,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
             b.onclick = () => document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
         });
 
-        // ── BROADCAST ────────────────────────────────────────────
+        // ── SEED DEFAULT DATA ─────────────────────────────────────
+        $('seedDataBtn').onclick = async () => {
+            if (!confirm('This will add default panels and packages. Existing data will NOT be deleted. Continue?')) return;
+            const status = $('seedStatus');
+            status.textContent = 'Loading...'; status.style.display = 'block';
+
+            const defaultServices = [
+                { name: 'DRIP CLIENT NON ROOT', description: 'Free Fire hack panel', price: '280',
+                  packages: [
+                    { label: '1 Day',  price: '280' }, { label: '3 Days', price: '450' },
+                    { label: '7 Days', price: '850' }, { label: '15 Days', price: '1250' },
+                    { label: '30 Days', price: '1850' }
+                  ]
+                },
+                { name: 'HG CHEATS', description: 'Free Fire hack panel', price: '230',
+                  packages: [
+                    { label: '1 Day',  price: '230' }, { label: '7 Days', price: '800' },
+                    { label: '15 Days', price: '1150' }, { label: '30 Days', price: '1650' }
+                  ]
+                },
+                { name: 'IOS FLUORITE', description: 'iOS hack panel', price: '500',
+                  packages: [
+                    { label: '1 Day', price: '500' }, { label: '3 Days', price: '1000' },
+                    { label: '7 Days', price: '1500' }, { label: '30 Days', price: '4000' }
+                  ]
+                }
+            ];
+
+            const defaultGames = [
+                { name: 'Free Fire',
+                  packages: [
+                    { label: '100 Diamonds', price: '80' }, { label: '310 Diamonds', price: '220' },
+                    { label: '520 Diamonds', price: '350' }, { label: '1060 Diamonds', price: '680' },
+                    { label: '2180 Diamonds', price: '1350' }
+                  ]
+                },
+                { name: 'PUBG Mobile',
+                  packages: [
+                    { label: '60 UC', price: '80' }, { label: '325 UC', price: '380' },
+                    { label: '660 UC', price: '750' }, { label: '1800 UC', price: '1950' }
+                  ]
+                }
+            ];
+
+            // Add services (panels)
+            for (const svc of defaultServices) {
+                const ref = db.ref('services').push();
+                await ref.set({ name: svc.name, description: svc.description, price: svc.price });
+            }
+
+            // Add games with packages
+            for (const game of defaultGames) {
+                const gameRef = db.ref('games').push();
+                await gameRef.set({ name: game.name });
+                for (const pkg of game.packages) {
+                    await gameRef.child('packages').push(pkg);
+                }
+            }
+
+            status.textContent = '✅ Default data loaded! Go to Games and Services to edit prices.';
+            setTimeout(() => status.style.display = 'none', 5000);
+        };
         function loadCustomers() {
             db.ref('users').once('value', snap => {
                 const list = $('customerList');

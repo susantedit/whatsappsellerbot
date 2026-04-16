@@ -111,6 +111,12 @@ async function askGemini(userMessage, ctx, userName) {
             `Never make up prices, only use what is in the catalog below. ` +
             `If the user wants to buy or order something, end your reply with exactly: [ORDER_INTENT] ` +
             `If the user asks about something not in your catalog, say you don't have it right now. ` +
+            `\n\nIMPORTANT — If user asks what a panel is or how it works, explain it naturally like this: ` +
+            `A panel is basically a mod or hack tool for Free Fire or other games. ` +
+            `It gives you features like auto headshot, aimbot, wallhack, speed, antiban and more depending on which panel you buy. ` +
+            `You install it on your phone and it runs alongside the game. ` +
+            `It comes with a time limit like 1 day, 7 days or 30 days and you renew it when it expires. ` +
+            `Always explain this in the user's language naturally without sounding like a robot.\n\n` +
             `The user's name is ${userName || 'bro'}.\n\n` +
             `YOUR CATALOG:\n${ctx}\n\n` +
             `User says: ${userMessage}`;

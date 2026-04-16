@@ -47,6 +47,13 @@ body{font-family:'Rajdhani',sans-serif;background:var(--bg);color:var(--text);mi
 .app{width:100%;max-width:480px;min-height:100vh;background:var(--bg);position:relative;display:flex;flex-direction:column;overflow:hidden;}
 @media(min-width:500px){.app{border-left:1px solid var(--border);border-right:1px solid var(--border);}}
 
+/* ── Desktop layout ── */
+@media(min-width:900px){
+  body{background:#050505;align-items:center;min-height:100vh;}
+  .app{max-width:420px;min-height:100vh;max-height:100vh;border-radius:0;box-shadow:0 0 60px rgba(230,57,70,0.15);}
+  .auth-wrap{background:none;}
+}
+
 /* ── Pages ── */
 .page{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity 0.3s;}
 .page.active{opacity:1;pointer-events:all;position:relative;}
@@ -284,6 +291,54 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
 
 </div><!-- end appPage -->
 
+<!-- ══ PURCHASE MODAL ══ -->
+<div id="buyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200;overflow-y:auto;padding:20px;">
+  <div style="max-width:420px;margin:0 auto;background:#111;border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 0 40px var(--red-glow);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-family:'Orbitron',sans-serif;font-size:0.9rem;letter-spacing:2px;color:var(--red);" id="modalTitle">ORDER</div>
+      <span onclick="closeBuyModal()" style="cursor:pointer;color:var(--muted);font-size:1.4rem;">&times;</span>
+    </div>
+
+    <!-- Step 1: Pick package -->
+    <div id="stepPackage">
+      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:12px;">SELECT PACKAGE</p>
+      <div id="packageList"></div>
+    </div>
+
+    <!-- Step 2: Enter UID (for topup) -->
+    <div id="stepUID" style="display:none;">
+      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:8px;">YOUR GAME UID</p>
+      <input id="buyUID" class="inp" type="text" placeholder="Enter your game UID">
+      <button class="btn solid" onclick="goToDetails()">NEXT</button>
+    </div>
+
+    <!-- Step 3: Name & Phone -->
+    <div id="stepDetails" style="display:none;">
+      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:8px;">YOUR DETAILS</p>
+      <input id="buyName" class="inp" type="text" placeholder="Full Name">
+      <input id="buyPhone" class="inp" type="tel" placeholder="Phone Number">
+      <button class="btn solid" onclick="goToPayment()">NEXT</button>
+    </div>
+
+    <!-- Step 4: Payment -->
+    <div id="stepPayment" style="display:none;">
+      <p style="color:var(--muted);font-size:0.82rem;letter-spacing:1px;margin-bottom:12px;">PAYMENT</p>
+      <div id="qrImageWrap" style="text-align:center;margin-bottom:16px;"></div>
+      <div id="paymentInfo" style="background:#1a1a1a;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;font-size:0.9rem;line-height:1.8;"></div>
+      <p style="color:#f59e0b;font-size:0.8rem;margin-bottom:14px;">⚠️ Write your name and phone in payment remarks</p>
+      <button class="btn solid" onclick="confirmPayment()"><i class="fas fa-check"></i> I HAVE PAID</button>
+    </div>
+
+    <!-- Step 5: Done -->
+    <div id="stepDone" style="display:none;text-align:center;padding:20px 0;">
+      <div style="font-size:3rem;margin-bottom:12px;">✅</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:1rem;color:var(--red);letter-spacing:2px;margin-bottom:8px;">ORDER PLACED</div>
+      <p style="color:var(--muted);font-size:0.9rem;">Your order has been received. We will process it after verifying payment. Usually 15-30 minutes.</p>
+      <button class="btn solid" style="margin-top:20px;" onclick="closeBuyModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -367,17 +422,20 @@ function loadGames() {
         c.innerHTML = '';
         if (!snap.exists()) { c.innerHTML = '<p style="color:var(--muted);padding:8px 0;font-size:0.85rem;">No games yet</p>'; return; }
         snap.forEach(child => {
-            const g = child.val();
+            const g = child.val(); const gid = child.key;
             const pkgs = g.packages ? Object.values(g.packages) : [];
             const minPrice = pkgs.length ? Math.min(...pkgs.map(p => parseFloat(p.price))) : null;
-            c.innerHTML += `
-                <div class="game-card">
-                    <div style="height:100px;background:linear-gradient(135deg,#1a0000,#0d0d0d);display:flex;align-items:center;justify-content:center;font-size:2.5rem;">🎮</div>
-                    <div class="game-card-body">
-                        <h4>${g.name}</h4>
-                        <p>${minPrice ? 'From ₹' + minPrice : 'View packages'}</p>
-                    </div>
+            const el = document.createElement('div');
+            el.className = 'game-card';
+            el.style.cursor = 'pointer';
+            el.innerHTML = `
+                <div style="height:100px;background:linear-gradient(135deg,#1a0000,#0d0d0d);display:flex;align-items:center;justify-content:center;font-size:2.5rem;">🎮</div>
+                <div class="game-card-body">
+                    <h4>${g.name}</h4>
+                    <p>${minPrice ? 'From ₹' + minPrice : 'View packages'}</p>
                 </div>`;
+            el.onclick = () => openBuyModal('topup', gid, g.name, g.packages);
+            c.appendChild(el);
         });
     });
 }
@@ -389,14 +447,17 @@ function loadServices() {
         c.innerHTML = '';
         if (!snap.exists()) { c.innerHTML = '<p style="color:var(--muted);padding:8px 0;font-size:0.85rem;">No services yet</p>'; return; }
         snap.forEach(child => {
-            const s = child.val();
-            c.innerHTML += `
-                <div class="svc-card">
-                    <div class="svc-icon">🎯</div>
-                    <h4>${s.name}</h4>
-                    <p>${s.description || ''}</p>
-                    <div class="price">₹${s.price}</div>
-                </div>`;
+            const s = child.val(); const sid = child.key;
+            const el = document.createElement('div');
+            el.className = 'svc-card';
+            el.style.cursor = 'pointer';
+            el.innerHTML = `
+                <div class="svc-icon">🎯</div>
+                <h4>${s.name}</h4>
+                <p>${s.description || ''}</p>
+                <div class="price">₹${s.price}</div>`;
+            el.onclick = () => openBuyModal('service', sid, s.name, null, s.price);
+            c.appendChild(el);
         });
     });
 }
@@ -452,6 +513,113 @@ document.querySelectorAll('.cat').forEach(cat => {
         cat.classList.add('active');
     };
 });
+
+// ══ PURCHASE FLOW ══════════════════════════════════════════════
+let _order = {};
+
+function openBuyModal(type, id, name, packages, fixedPrice) {
+    _order = { type, id, name };
+    document.getElementById('modalTitle').textContent = name.toUpperCase();
+    // reset all steps
+    ['stepPackage','stepUID','stepDetails','stepPayment','stepDone'].forEach(s => {
+        document.getElementById(s).style.display = 'none';
+    });
+
+    if (type === 'service') {
+        // service has fixed price, skip package selection
+        _order.price = fixedPrice;
+        _order.item  = name;
+        document.getElementById('stepDetails').style.display = 'block';
+    } else {
+        // topup — show package list
+        const list = document.getElementById('packageList');
+        list.innerHTML = '';
+        if (packages) {
+            Object.entries(packages).forEach(([pid, pkg]) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.style.cssText = 'width:100%;margin-bottom:8px;text-align:left;padding:12px 16px;display:flex;justify-content:space-between;';
+                btn.innerHTML = `<span>${pkg.label}</span><span style="color:var(--red);font-weight:800;">₹${pkg.price}</span>`;
+                btn.onclick = () => {
+                    _order.package = pkg.label;
+                    _order.packageId = pid;
+                    _order.price = pkg.price;
+                    document.getElementById('stepPackage').style.display = 'none';
+                    document.getElementById('stepUID').style.display = 'block';
+                };
+                list.appendChild(btn);
+            });
+        }
+        document.getElementById('stepPackage').style.display = 'block';
+    }
+    document.getElementById('buyModal').style.display = 'block';
+}
+
+function closeBuyModal() {
+    document.getElementById('buyModal').style.display = 'none';
+    _order = {};
+}
+
+function goToDetails() {
+    const uid = document.getElementById('buyUID').value.trim();
+    if (!uid) { alert('Please enter your game UID'); return; }
+    _order.uid = uid;
+    document.getElementById('stepUID').style.display = 'none';
+    document.getElementById('stepDetails').style.display = 'block';
+}
+
+function goToPayment() {
+    const name  = document.getElementById('buyName').value.trim();
+    const phone = document.getElementById('buyPhone').value.trim();
+    if (!name || !phone) { alert('Please fill in your name and phone'); return; }
+    _order.name  = name;
+    _order.phone = phone;
+
+    // load payment info from Firebase settings
+    db.ref('settings').once('value', snap => {
+        const s = snap.val() || {};
+        const upi = s.upi || '';
+        const qr  = s.qr_image_url || '';
+
+        document.getElementById('paymentInfo').innerHTML =
+            `<div style="margin-bottom:6px;color:var(--muted);font-size:0.8rem;letter-spacing:1px;">AMOUNT</div>` +
+            `<div style="font-family:'Orbitron',sans-serif;font-size:1.4rem;color:var(--red);margin-bottom:12px;">₹${_order.price}</div>` +
+            (upi ? `<div style="color:var(--muted);font-size:0.8rem;letter-spacing:1px;margin-bottom:4px;">UPI ID</div><div style="font-weight:700;color:#fff;margin-bottom:8px;">${upi}</div>` : '') +
+            `<div style="color:var(--muted);font-size:0.8rem;">Remark: ${name} ${phone}</div>`;
+
+        const qrWrap = document.getElementById('qrImageWrap');
+        qrWrap.innerHTML = qr
+            ? `<img src="${qr}" style="max-width:180px;border-radius:8px;border:2px solid var(--border);">`
+            : '';
+
+        document.getElementById('stepDetails').style.display = 'none';
+        document.getElementById('stepPayment').style.display = 'block';
+    });
+}
+
+function confirmPayment() {
+    const user = auth.currentUser;
+    const order = {
+        type:         _order.type,
+        game:         _order.name || null,
+        package:      _order.package || null,
+        uid:          _order.uid || null,
+        item:         _order.item || null,
+        name:         _order.name,
+        phone:        _order.phone,
+        price:        _order.price,
+        paymentProof: 'Web order - payment claimed',
+        waNumber:     _order.phone,
+        userEmail:    user ? user.email : 'guest',
+        source:       'web',
+        status:       'Pending',
+        timestamp:    new Date().toISOString()
+    };
+    db.ref('orders').push(order).then(() => {
+        document.getElementById('stepPayment').style.display = 'none';
+        document.getElementById('stepDone').style.display = 'block';
+    });
+}
 </script>
 </body>
 </html>
