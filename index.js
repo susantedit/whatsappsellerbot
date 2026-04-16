@@ -591,8 +591,13 @@ async function startBot() {
             const packages = picked.packages ? Object.keys(picked.packages).map(k => ({ id: k, ...picked.packages[k] })) : [];
             if (packages.length) {
                 userStates[sender] = { ...st, step: 'PICK_SERVICE_PKG', service: picked, packages };
-                const list = packages.map((p, i) => `*${i+1}.* ${p.label} — ₹${p.price}`).join('\n');
-                await send(`${picked.name} 🎯\n\n${list}\n\nWhich package do you want?`);
+                const list = packages.map((p, i) => `*${i+1}.* ${p.label} — Rs.${p.price}`).join('\n');
+                // add certificate note for Fluorite
+                const isFluorite = picked.name.toLowerCase().includes('fluorite');
+                const note = isFluorite
+                    ? `\n\n⚠️ *Certificate Note:*\nCertificate is *mandatory* for iOS Fluorite.\nCost: *Rs.999 one-time per device (lifetime)*\nIf you already have a certificate, you only pay for the panel package.`
+                    : '';
+                await send(`${picked.name} 🎯\n\n${list}${note}\n\nWhich package do you want?`);
             } else {
                 userStates[sender] = { ...st, step: 'ASK_DURATION', service: picked };
                 // build duration list with prices if available
