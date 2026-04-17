@@ -427,6 +427,9 @@ async function startBot() {
         const sender  = msg.key.remoteJid;
         // ── Ignore group messages — only respond to private chats ──
         if (sender.endsWith('@g.us')) return;
+        // ── Ignore old messages (older than 30 min) — prevents flood after long offline ──
+        const msgTime = (msg.messageTimestamp || 0) * 1000;
+        if (Date.now() - msgTime > 30 * 60 * 1000) return;
         const waNum   = sender.split('@')[0];
         const rawText = sanitizeInput(msg.message.conversation || msg.message.extendedTextMessage?.text || '');
         const t       = rawText.toLowerCase();

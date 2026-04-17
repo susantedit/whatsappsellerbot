@@ -17,13 +17,13 @@ if (file_exists($envFile)) {
 function env($k, $d = '') { return $_ENV[$k] ?? getenv($k) ?: $d; }
 
 $firebaseConfig = [
-  "apiKey"            => env('FIREBASE_API_KEY'),
-  "authDomain"        => env('FIREBASE_AUTH_DOMAIN'),
-  "databaseURL"       => env('FIREBASE_DATABASE_URL'),
-  "projectId"         => env('FIREBASE_PROJECT_ID'),
-  "storageBucket"     => env('FIREBASE_STORAGE_BUCKET'),
-  "messagingSenderId" => env('FIREBASE_MESSAGING_SENDER_ID'),
-  "appId"             => env('FIREBASE_APP_ID'),
+  "apiKey"            => "AIzaSyBMKKuGr9Djv9_9PhmC3GFedLX6PPzV9n4",
+  "authDomain"        => "whatsappagent-b7c36.firebaseapp.com",
+  "databaseURL"       => "https://whatsappagent-b7c36-default-rtdb.firebaseio.com",
+  "projectId"         => "whatsappagent-b7c36",
+  "storageBucket"     => "whatsappagent-b7c36.firebasestorage.app",
+  "messagingSenderId" => "116260179438",
+  "appId"             => "1:116260179438:web:6ffd88d4ee4af3f4b792ff",
 ];
 ?>
 <!DOCTYPE html>
