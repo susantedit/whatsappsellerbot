@@ -17,13 +17,13 @@ if (file_exists($envFile)) {
 function env($k, $d = '') { return $_ENV[$k] ?? getenv($k) ?: $d; }
 
 $firebaseConfig = [
-  "apiKey"            => "",
-  "authDomain"        => "",
-  "databaseURL"       => "",
-  "projectId"         => "",
-  "storageBucket"     => "",
-  "messagingSenderId" => "",
-  "appId"             => "",
+  "apiKey"            => env('FIREBASE_API_KEY'),
+  "authDomain"        => env('FIREBASE_AUTH_DOMAIN'),
+  "databaseURL"       => env('FIREBASE_DATABASE_URL'),
+  "projectId"         => env('FIREBASE_PROJECT_ID'),
+  "storageBucket"     => env('FIREBASE_STORAGE_BUCKET'),
+  "messagingSenderId" => env('FIREBASE_MESSAGING_SENDER_ID'),
+  "appId"             => env('FIREBASE_APP_ID'),
 ];
 ?>
 <!DOCTYPE html>
@@ -744,4 +744,5 @@ function confirmBotPayment() {
 </script>
 </body>
 </html>
+
 

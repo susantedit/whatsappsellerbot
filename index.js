@@ -8,9 +8,36 @@ const FIREBASE_URL  = process.env.FIREBASE_URL;
 const GEMINI_KEY    = process.env.GEMINI_API_KEY;
 const SMTP_USER     = process.env.SMTP_USER;
 const SMTP_PASS     = process.env.SMTP_PASS;
-const NOTIFY_EMAIL  = process.env.NOTIFY_EMAIL || SMTP_USER; // where to send order alerts
+const NOTIFY_EMAIL  = process.env.NOTIFY_EMAIL || SMTP_USER;
+
+// ⭐ Validate critical environment variables at startup
+if (!FIREBASE_URL) {
+    console.error('❌ FIREBASE_URL is required in .env');
+    process.exit(1);
+}
+if (!SMTP_USER || !SMTP_PASS) {
+    console.warn('⚠️ SMTP credentials missing - email notifications disabled');
+}
 
 const userStates = {};
+
+// ── Memory Cleanup ──────────────────────────────────────────────
+// Clear old user states every 24 hours to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    let cleared = 0;
+    for (const [sender, state] of Object.entries(userStates)) {
+        const inactiveFor = now - (state.lastActivity || now);
+        // Clear if inactive for 24 hours
+        if (inactiveFor > 24 * 60 * 60 * 1000) {
+            delete userStates[sender];
+            cleared++;
+        }
+    }
+    if (cleared > 0) {
+        console.log(`[CLEANUP] Removed ${cleared} inactive user sessions`);
+    }
+}, 60 * 60 * 1000); // Every hour
 
 // ── Rate limiting ────────────────────────────────────────────────
 const rateLimits = {};
@@ -22,8 +49,42 @@ function isRateLimited(sender) {
     return rateLimits[sender].count > max;
 }
 
+// Auto-cleanup rate limits every 2 hours
+setInterval(() => {
+    const now = Date.now();
+    let cleared = 0;
+    for (const [sender, limit] of Object.entries(rateLimits)) {
+        if (now - limit.start > 2 * 60 * 60 * 1000) {
+            delete rateLimits[sender];
+            cleared++;
+        }
+    }
+    if (cleared > 0) {
+        console.log(`[CLEANUP] Removed ${cleared} expired rate limits`);
+    }
+}, 2 * 60 * 60 * 1000);
+
 function sanitizeInput(text) {
-    return String(text).replace(/[<>"'`]/g, '').trim().slice(0, 500);
+    // Remove dangerous characters and limit length
+    return String(text)
+        .replace(/[<>"'`]/g, '')  // Remove HTML/SQL chars
+        .replace(/[{}[\]]/g, '')   // Remove JSON/code chars
+        .trim()
+        .slice(0, 500);
+}
+
+// ⭐ Enhanced validators for data integrity
+function validateName(name) {
+    const cleaned = sanitizeInput(name);
+    if (cleaned.length < 2 || cleaned.length > 50) return null;
+    if (!/^[a-zA-Z0-9\s\-_.]*$/.test(cleaned)) return null; // Only alphanumeric + common chars
+    return cleaned;
+}
+
+function validateUID(uid) {
+    const cleaned = String(uid).replace(/[^0-9a-zA-Z]/g, '');
+    if (cleaned.length < 5 || cleaned.length > 15) return null;
+    return cleaned;
 }
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -147,6 +208,37 @@ async function sendOrderEmail(order) {
         });
         console.log('[EMAIL] Order notification sent');
     } catch (e) { console.error('[EMAIL] Failed:', e.message); }
+}
+
+// ── eSewa Payment & Phone Validation ─────────────────────────
+function validatePhoneNumber(phone) {
+    // validate Nepali phone format: 10 digits starting with 98 or 97
+    const cleanPhone = String(phone).replace(/[^0-9]/g, '');
+    if (!/^977?\d{8,10}$/.test(cleanPhone) && !/^98\d{8}$/.test(cleanPhone) && !/^97\d{8}$/.test(cleanPhone)) {
+        return { valid: false, message: 'Invalid phone. Use format: 9779708838261 or 9849123456' };
+    }
+    return { valid: true, phone: cleanPhone };
+}
+
+async function verifyESewaPayment(phone, amount, transactionId) {
+    // This checks if payment was made in eSewa
+    // In production, connect to eSewa API: https://eSewa.com.np/developers
+    // For now, return verification pending
+    try {
+        const payload = { 
+            transactionId, 
+            phone, 
+            amount, 
+            verifiedAt: new Date().toISOString(),
+            status: 'pending' // 'pending', 'verified', 'failed'
+        };
+        // TODO: Add eSewa API integration here
+        // await fetch('https://eSewa.com.np/api/check-payment', { method: 'POST', body: JSON.stringify(payload) })
+        return payload;
+    } catch (e) {
+        console.error('eSewa verification error:', e.message);
+        return { status: 'error', message: e.message };
+    }
 }
 
 function toArray(obj) {
@@ -402,11 +494,7 @@ async function startBot() {
                 const services = toArray(data);
                 if (!services.length) { await send('No panels available right now, check back soon!'); return; }
                 userStates[sender] = { ...st, step: 'PICK_SERVICE', services };
-                const list = services.map((s, i) => {
-                    const pkgs = s.packages ? Object.values(s.packages) : [];
-                    const prices = pkgs.map(p => `${p.label} ₹${p.price}`).join(' | ');
-                    return `*${i+1}.* ${s.name}\n    ${prices || `₹${s.price}`}${s.description ? '\n    _' + s.description + '_' : ''}`;
-                }).join('\n\n');
+                const list = services.map((s, i) => `*${i+1}.* ${s.name}${s.description ? ' — _' + s.description + '_' : ''}`).join('\n');
                 await send(`Here are all the panels 🎯\n\n${list}\n\nReply with the number you want`);
                 return;
             }
@@ -500,22 +588,26 @@ async function startBot() {
         // ── ASK_QUESTION ──────────────────────────────────────────
         if (st.step === 'ASK_QUESTION') {
             if (GEMINI_KEY) {
-                const ctx = await buildBusinessContext();
-                const aiReply = await askGemini(rawText, ctx, userName);
-                if (aiReply) {
-                    const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
-                    await send(clean);
-                    await delay(600);
-                    if (aiReply.includes('[ORDER_INTENT]')) {
-                        userStates[sender] = { step: 'PICK_CATEGORY', name: userName };
-                        await send(`Want to place an order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
-                    } else {
-                        await send(`Got more questions? Just ask 😊\nOr type *menu* to go back to the main menu`);
+                try {
+                    const ctx = await buildBusinessContext();
+                    const aiReply = await askGemini(rawText, ctx, userName);
+                    if (aiReply && aiReply.trim()) {
+                        const clean = aiReply.replace('[ORDER_INTENT]', '').trim();
+                        await send(clean);
+                        await delay(600);
+                        if (aiReply.includes('[ORDER_INTENT]')) {
+                            userStates[sender] = { step: 'PICK_CATEGORY', name: userName };
+                            await send(`Want to place an order?\n\n*1* 💬 General\n*2* 🎯 Panels\n*3* 💎 Diamond Top-Up\n*4* 🤖 Buy This Bot`);
+                        } else {
+                            await send(`Got more questions? Just ask 😊\nOr type *menu* to go back to the main menu`);
+                        }
+                        return;
                     }
-                    return;
+                } catch (e) {
+                    console.error('AI question error:', e.message);
                 }
             }
-            await send(`For pricing and details:\n\n🎯 *Panels* — type *2* to see all panels with prices\n💎 *Top-Up* — type *3* to see diamond packages\n\nOr contact directly: wa.me/9779708838261`);
+            await send(`For pricing and details:\n\n🎯 *Panels* — type *2* to see all panels with prices\n💎 *Top-Up* — type *3* to see diamond packages\n\nOr ask me anything and I'll try my best! 😊`);
             return;
         }
 
@@ -702,30 +794,40 @@ async function startBot() {
 
         // ── ASK_PHONE ─────────────────────────────────────────────
         if (st.step === 'ASK_PHONE') {
-            userStates[sender] = { ...st, step: 'SEND_PAYMENT', orderData: { ...st.orderData, phone: rawText } };
+            const phoneValidation = validatePhoneNumber(rawText);
+            if (!phoneValidation.valid) {
+                await send(`❌ ${phoneValidation.message}\n\nPlease try again`);
+                return;
+            }
+            
+            userStates[sender] = { ...st, step: 'SEND_PAYMENT', orderData: { ...st.orderData, phone: phoneValidation.phone } };
             const settings = await fbGet('settings');
             const upi = settings?.upi || null;
             const qrUrl = settings?.qr_image_url || null;
             const od = st.orderData;
-            const paymentMsg =
-                `💳 Payment Details\n\nAmount: ₹${od.price}` +
-                (upi ? `\nUPI: ${upi}` : '') +
-                `\n\nRemark: ${od.name} - ${rawText}\n\nAfter paying send the screenshot here 📸`;
+            
+            const paymentMsg = `💳 *PAYMENT*\n\nAmount: ₹${od.price}\nName: ${od.name}\nPhone: ${phoneValidation.phone}\n\n*Methods:* UPI / Bank / eSewa\n\n*Remark:* ${od.name} - ${phoneValidation.phone}\n\nAfter paying, send screenshot 📸`;
 
-            // send QR
-            if (qrUrl) {                await sock.sendPresenceUpdate('composing', sender);
-                await delay(800);
-                await sock.sendMessage(sender, { image: { url: qrUrl }, caption: paymentMsg });
+            if (qrUrl) {
+                await sock.sendPresenceUpdate('composing', sender);
+                await delay(1000);
+                await sock.sendMessage(sender, { image: { url: qrUrl }, caption: paymentMsg }).catch(() => {
+                    if (fs.existsSync('./payment.jpeg')) {
+                        sock.sendMessage(sender, { image: fs.readFileSync('./payment.jpeg'), caption: paymentMsg });
+                    } else {
+                        send(paymentMsg);
+                    }
+                });
             } else if (fs.existsSync('./payment.jpeg')) {
                 await sock.sendPresenceUpdate('composing', sender);
-                await delay(800);
+                await delay(1000);
                 await sock.sendMessage(sender, { image: fs.readFileSync('./payment.jpeg'), caption: paymentMsg });
             } else {
                 await send(paymentMsg);
             }
 
-            await delay(600);
-            await send(`Make sure to write *${od.name} - ${rawText}* in the payment remark, otherwise your order cannot be verified 🙏`);
+            await delay(800);
+            await send(`✅ Payment details sent!\n\n⏱️ Verification: 10-20 minutes`);
             return;
         }
 
@@ -734,26 +836,45 @@ async function startBot() {
             const hasImage = !!(msg.message?.imageMessage);
             const proof = hasImage ? '[Screenshot received]' : rawText;
             const od = st.orderData;
-            await fbPost('orders', {
-                type: od.type, game: od.game || null, package: od.package || null,
-                uid: od.uid || null, gamePhone: od.gamePhone || null, item: od.item || null,
-                name: od.name, phone: od.phone, price: od.price,
-                paymentProof: proof, waNumber: waNum,
-                status: 'Pending', timestamp: new Date().toISOString()
-            });
+            const waNum = sender.split('@')[0];
+            
+            const orderRecord = {
+                type: od.type,
+                game: od.game || null,
+                package: od.package || null,
+                uid: od.uid || null,
+                gamePhone: od.gamePhone || null,
+                item: od.item || null,
+                name: od.name,
+                phone: od.phone,
+                price: od.price,
+                paymentProof: proof,
+                waNumber: waNum,
+                status: 'Pending',
+                timestamp: new Date().toISOString(),
+                paymentMethod: hasImage ? 'screenshot' : 'text'
+            };
+            
+            await fbPost('orders', orderRecord);
             await sendOrderEmail({ ...od, waNumber: waNum, timestamp: new Date().toISOString() });
-            await saveUser(waNum, { lastOrderWa: sender });
+            await saveUser(waNum, { lastOrderWa: sender, lastOrderTime: new Date().toISOString() });
+            
             userStates[sender] = { step: 'RETURNING', name: od.name };
+            
             await send(
-                `Got it ${od.name}! 🙌\n\n` +
-                (od.game ? `Game: ${od.game}\nPackage: ${od.package}\nUID: ${od.uid}\n` : `Service: ${od.item}\n`) +
-                `Amount: ₹${od.price}\n\n` +
-                `⏳ *Verification in process...*\nWe are checking your payment. This usually takes 15–30 minutes. We'll message you once it's confirmed ✅`
+                `✅ *ORDER CONFIRMED*\n\n` +
+                (od.game ? `🎮 Game: ${od.game}\n📦 Package: ${od.package}\n` : `🎯 Service: ${od.item}\n`) +
+                `💰 Amount: ₹${od.price}\n\n` +
+                `📋 Status: ⏳ *Verification In Progress*\n` +
+                `We're checking your payment...\n\n` +
+                `⏱️ Time: 10-20 minutes`
             );
-            await delay(600);
-            await send(`⚠️ *Reminder:* Make sure your payment remark includes *${od.name} - ${od.phone}* — otherwise we can't verify it 🙏`);
+            
+            await delay(800);
+            await send(`📌 *What Happens Next:*\n1️⃣ Admin verifies payment\n2️⃣ Order gets processed\n3️⃣ We notify you\n\n💬 Any issues? Reply *help*`);
+            
             await delay(400);
-            await send(`Need anything else? Type *restart* for a new order or *stop* to end the chat`);
+            await send(`Type *restart* for new order or *stop* to end`);
             return;
         }
 
@@ -855,4 +976,36 @@ function listenOrderStatusChanges() {
     }, 30_000); // check every 30 seconds
 }
 
-startBot().catch(err => console.error('Fatal error:', err));
+// ── 24/7 Error Handling & Auto-Recovery ─────────────────────────
+let errorCount = 0;
+
+process.on('uncaughtException', (err) => {
+    errorCount++;
+    console.error(`[ERROR ${errorCount}]`, err.message);
+    if (errorCount > 3) process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[REJECTION]', reason);
+});
+
+process.on('SIGTERM', () => {
+    console.log('[SIGNAL] SIGTERM received - graceful exit');
+    process.exit(0);
+});
+
+// Exit after 27 min (leaves buffer before GitHub 28 min timeout)
+setTimeout(() => {
+    console.log('[TIMEOUT] Graceful exit for workflow restart');
+    process.exit(0);
+}, 27 * 60 * 1000);
+
+startBot().catch(err => {
+    console.error('[STARTUP] Bot error:', err.message);
+    process.exit(1);
+});
+
+// Health check every 5 minutes
+setInterval(() => {
+    console.log(`[OK] ${Object.keys(userStates).length} users | ${new Date().toISOString()}`);
+}, 5 * 60 * 1000);

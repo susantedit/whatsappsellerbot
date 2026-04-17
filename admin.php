@@ -109,7 +109,15 @@ if (!empty($gate_pass)) {
 // ============================================================
 // SECURITY: Firebase config loaded from environment variables.
 // ============================================================
-$firebaseConfig = ["apiKey"=>"","authDomain"=>"","databaseURL"=>"","projectId"=>"","storageBucket"=>"","messagingSenderId"=>"","appId"=>""];
+$firebaseConfig = [
+  "apiKey"            => "AIzaSyBMKKuGr9Djv9_9PhmC3GFedLX6PPzV9n4",
+  "authDomain"        => "whatsappagent-b7c36.firebaseapp.com",
+  "databaseURL"       => "https://whatsappagent-b7c36-default-rtdb.firebaseio.com",
+  "projectId"         => "whatsappagent-b7c36",
+  "storageBucket"     => "whatsappagent-b7c36.firebasestorage.app",
+  "messagingSenderId" => "116260179438",
+  "appId"             => "1:116260179438:web:6ffd88d4ee4af3f4b792ff",
+];
 
 // ── Admin login rate limiting (server-side) ───────────────────
 // Max 10 login attempts per IP per 15 minutes
@@ -1329,3 +1337,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_login_check']))
     </div>
 </body>
 </html>
+

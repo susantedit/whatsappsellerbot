@@ -1,26 +1,52 @@
-name: JavaGoat-WhatsApp-Bot
+name: JavaGoat-WhatsApp-Bot-24-7
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'
+    # Run every 20 minutes for continuous 24/7 uptime
+    - cron: '*/20 * * * *'
+  push:
+    branches: [main, master]
 
 jobs:
-  build:
+  bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 32
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Setup Node.js
+      - name: Setup Node.js v20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
+          cache: 'npm'
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install Dependencies (Optimized)
+        run: |
+          npm ci --omit=dev --prefer-offline --no-audit --no-save 2>/dev/null || npm install --omit=dev
+        continue-on-error: true
 
-      - name: Start AI Bot
+      - name: Run WhatsApp Bot 24/7
+        timeout-minutes: 28
         env:
           FIREBASE_URL: ${{ secrets.FIREBASE_URL }}
-        run: npm start
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=512
+        run: |
+          echo "🤖 WhatsBot starting - $(date)"
+          timeout 1680s npm start || EXIT=$?
+          echo "Bot cycle completed at $(date) - Exit: $EXIT"
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "✅ Workflow completed - Bot will restart in 20 minutes"
+          # Auto-restart happens via GitHub schedule
