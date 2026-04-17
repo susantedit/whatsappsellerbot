@@ -331,6 +331,63 @@ async function askGemini(userMessage, ctx, userName) {
     } catch (e) { console.error('Gemini error:', e.message); return null; }
 }
 
+// ── Search Business Data (Fallback when Gemini fails) ──────────────
+async function searchBusinessData(userQuestion) {
+    try {
+        const q = userQuestion.toLowerCase();
+        const services = await fbGet('services');
+        
+        if (!services) return null;
+
+        // Check for panel-related questions
+        if (q.includes('panel') || q.includes('hack') || q.includes('mod') || q.includes('aimbot') || q.includes('wallhack')) {
+            const panels = Object.values(services).filter(s => s.category === 'panel' || s.name?.toLowerCase().includes('panel'));
+            if (panels.length > 0) {
+                let reply = `📋 *Available Panels:*\n\n`;
+                panels.slice(0, 3).forEach(p => {
+                    reply += `🎯 *${p.name}*\n`;
+                    if (p.description) reply += `${p.description}\n`;
+                    reply += `\n`;
+                });
+                reply += `Type *2* to see full panel list with prices`;
+                return reply;
+            }
+        }
+
+        // Check for top-up questions
+        if (q.includes('diamond') || q.includes('top-up') || q.includes('topup') || q.includes('recharge')) {
+            const topups = Object.values(services).filter(s => s.category === 'topup' || s.name?.toLowerCase().includes('diamond'));
+            if (topups.length > 0) {
+                let reply = `💎 *Diamond Top-Up Packages:*\n\n`;
+                topups.slice(0, 3).forEach(p => {
+                    if (p.packages) {
+                        Object.entries(p.packages).slice(0, 2).forEach(([size, price]) => {
+                            reply += `• ${size} — ₹${price}\n`;
+                        });
+                    }
+                });
+                reply += `\nType *3* to see all diamond packages`;
+                return reply;
+            }
+        }
+
+        // Check for bot questions
+        if (q.includes('bot setup') || q.includes('whatsapp bot') || q.includes('buy bot')) {
+            return `🤖 *WhatsApp Bot Setup*\n\nSet up your own gaming panel WhatsApp bot!\n\n💰 Price: ₹1500 for 4 months\n\nType *4* to get bot setup info`;
+        }
+
+        // Check for general panel explanation
+        if (q.includes('what is') || q.includes('how does') || q.includes('how it works')) {
+            return `A *panel* is basically a mod tool for Free Fire and other games. It gives features like:\n\n✅ Auto headshot\n✅ Aimbot\n✅ Wallhack\n✅ Speed boost\n✅ Anti-ban protection\n\nYou install it on your phone and it works alongside the game. Choose your duration (1 day, 7 days, etc) and enjoy! 🎮\n\nType *2* to see all panels`;
+        }
+
+        return null;
+    } catch (e) {
+        console.error('Data search error:', e.message);
+        return null;
+    }
+}
+
 // ── Bot ──────────────────────────────────────────────────────────
 let sock; // global so order status listener can use it
 
@@ -607,6 +664,19 @@ async function startBot() {
                     console.error('AI question error:', e.message);
                 }
             }
+            // Try searching business data when Gemini fails or is unavailable
+            try {
+                const dataReply = await searchBusinessData(rawText);
+                if (dataReply) {
+                    await send(dataReply);
+                    await delay(600);
+                    await send(`Got more questions? Just ask 😊\nOr type *menu* to go back to the main menu`);
+                    return;
+                }
+            } catch (e) {
+                console.error('Data search error:', e.message);
+            }
+            // Fallback if both AI and data search fail
             await send(`For pricing and details:\n\n🎯 *Panels* — type *2* to see all panels with prices\n💎 *Top-Up* — type *3* to see diamond packages\n\nOr ask me anything and I'll try my best! 😊`);
             return;
         }
