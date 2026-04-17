@@ -439,10 +439,21 @@ async function startBot() {
 
         // typing indicator
         const send = async (text) => {
-            await sock.sendPresenceUpdate('composing', sender);
-            await delay(1200 + Math.random() * 1500); // feels like real typing
-            await sock.sendPresenceUpdate('paused', sender);
-            return sock.sendMessage(sender, { text });
+            try {
+                await sock.sendPresenceUpdate('composing', sender);
+                await delay(1200 + Math.random() * 1500);
+                await sock.sendPresenceUpdate('paused', sender);
+                return await sock.sendMessage(sender, { text });
+            } catch (e) {
+                console.error(`[SEND ERROR] ${e.message}`);
+                // retry once after short delay
+                try {
+                    await delay(2000);
+                    return await sock.sendMessage(sender, { text });
+                } catch (e2) {
+                    console.error(`[SEND RETRY FAILED] ${e2.message}`);
+                }
+            }
         };
 
         // ── Silent (General) — blocked, but allow menu/restart to escape ──
